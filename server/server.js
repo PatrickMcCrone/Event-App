@@ -26,6 +26,7 @@ const pool = new Pool({
 // This GET request will simply display a message in the browser
 // To run the API without errors, you need to cd (like in Systems Programming class) into the server folder and run "npm run dev" in the terminal
 // To test this, go to http://localhost:5000/ in your browser after launching the API
+// To shut down the API, you can press Ctrl+C in the terminal
 app.get('/', (req, res) => {
 
     res.send('This is the start of the Event App!');
@@ -36,6 +37,7 @@ app.get('/', (req, res) => {
 // This GET request will query the sample Neon DB for conferences and display them in the browser
 // To run the API without errors, you need to cd (like in Systems Programming class) into the server folder and run "npm run dev" in the terminal
 // To test this, go to http://localhost:5000/conferences in your browser after launching the API
+// To shut down the API, you can press Ctrl+C in the terminal
 app.get('/conferences', async (req, res) => {
 
     const client = await pool.connect();
