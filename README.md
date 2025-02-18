@@ -1,6 +1,6 @@
 # Event-App
 
-This is the start of out Web-based Event App! - To be able to run a local server and use this basic app, ensure Node is installed on your machine - If you need to figure out how to install Node, just look it up on Google. It is fairly simple
+This is the start of out Web-based Event App! - To be able to run a local server and use this basic app, ensure Node is installed on your machine - If you need to figure out how to install Node, just look it up on Google. It is fairly simple. Here's a link anyways: https://nodejs.org/en
 
 1. Starting the App
    - To start the app, open a terminal in your IDE
