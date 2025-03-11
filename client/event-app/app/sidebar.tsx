@@ -1,5 +1,7 @@
+"use client";
 import React, { useState } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link"; // Import Link from next/link
 
 // Import the icons directly from Heroicons v2
 import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
@@ -54,35 +56,46 @@ const Sidebar = () => {
 							{isCollapsed ? "" : "Dashboard"}
 						</motion.a>
 					</li>
+
+					{/* Updated "Events" link */}
 					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<motion.a
-							href="/"
+						<Link
+							href="/events" // Link to the events page
 							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-							initial={{ opacity: 1 }}
-							animate={{ opacity: isCollapsed ? 0 : 1 }} // Fade in/out each link based on collapse state
-							transition={{ duration: 0.3, delay: 0.2 }} // Delay fade-in to sync with sidebar expansion
 						>
-							{isCollapsed ? "" : "Events"}
-						</motion.a>
+							<motion.span
+								initial={{ opacity: 1 }}
+								animate={{ opacity: isCollapsed ? 0 : 1 }}
+								transition={{ duration: 0.3, delay: 0.2 }}
+							>
+								{isCollapsed ? "" : "Events"}
+							</motion.span>
+						</Link>
 					</li>
+
+					{/* Create Event link */}
 					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<motion.a
-							href="/"
+						<Link
+							href="/create-event"
 							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-							initial={{ opacity: 1 }}
-							animate={{ opacity: isCollapsed ? 0 : 1 }} // Fade in/out each link based on collapse state
-							transition={{ duration: 0.3, delay: 0.2 }} // Delay fade-in to sync with sidebar expansion
 						>
-							{isCollapsed ? "" : "Create Event"}
-						</motion.a>
+							<motion.span
+								initial={{ opacity: 1 }}
+								animate={{ opacity: isCollapsed ? 0 : 1 }}
+								transition={{ duration: 0.3, delay: 0.2 }}
+							>
+								{isCollapsed ? "" : "Create Event"}
+							</motion.span>
+						</Link>
 					</li>
+
 					<li className={`${isCollapsed ? "text-center" : ""}`}>
 						<motion.a
 							href="/"
 							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
 							initial={{ opacity: 1 }}
-							animate={{ opacity: isCollapsed ? 0 : 1 }} // Fade in/out each link based on collapse state
-							transition={{ duration: 0.3, delay: 0.2 }} // Delay fade-in to sync with sidebar expansion
+							animate={{ opacity: isCollapsed ? 0 : 1 }}
+							transition={{ duration: 0.3, delay: 0.2 }}
 						>
 							{isCollapsed ? "" : "Settings"}
 						</motion.a>

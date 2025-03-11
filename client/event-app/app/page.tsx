@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Sidebar from "./sidebar";
+import { useRouter } from "next/navigation"; // Import useRouter for navigation
 
 // Define the type for a single event
 interface Event {
@@ -10,8 +10,15 @@ interface Event {
 }
 
 export default function Home() {
-	// Explicitly define the state type for events
 	const [events, setEvents] = useState<Event[]>([]);
+	const [isClient, setIsClient] = useState(false); // State to track if it's client-side
+
+	const router = useRouter();
+
+	// Use useEffect to ensure that the router is only used on the client
+	useEffect(() => {
+		setIsClient(true);
+	}, []);
 
 	useEffect(() => {
 		const fetchEvents = async () => {
@@ -31,11 +38,19 @@ export default function Home() {
 		fetchEvents();
 	}, []);
 
+	// Handle the button click to navigate to the create-event page
+	const handleCreateEventClick = () => {
+		if (router) {
+			router.push("/create-event"); // Navigate to the "Create Event" page
+		}
+	};
+
+	if (!isClient) {
+		return null; // Ensure that nothing is rendered on SSR
+	}
+
 	return (
 		<div className="flex">
-			{/* Sidebar */}
-			<Sidebar />
-
 			{/* Main Content */}
 			<div className="flex justify-center min-h-screen bg-gray-100 p-6">
 				<div className="max-w-4xl mx-auto">
@@ -51,7 +66,11 @@ export default function Home() {
 
 					{/* Quick Actions */}
 					<div className="mt-6 flex gap-4">
-						<button className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-700">
+						{/* Create Event Button */}
+						<button
+							onClick={handleCreateEventClick} // Trigger navigation on click
+							className="bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-blue-700"
+						>
 							+ Create Event
 						</button>
 						<button className="bg-gray-500 text-white px-4 py-2 rounded-lg shadow-md hover:bg-gray-700">
