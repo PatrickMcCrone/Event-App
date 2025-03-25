@@ -32,7 +32,7 @@ const Sidebar = () => {
 					<XMarkIcon className="w-6 h-6 text-white" />
 				)}
 			</button>
-
+				
 			{/* Sidebar content */}
 			<motion.h1
 				className={`text-xl font-bold ${isCollapsed ? "hidden" : ""}`}
