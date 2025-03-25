@@ -106,95 +106,118 @@ export default function CreateEvent() {
 	};
 
 	return (
-		<div className="min-h-screen bg-gray-100 p-6">
-			<div className="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
-				<h1 className="text-3xl font-bold">Create New Event</h1>
+		<div className="min-h-screen bg-slate-50 dark:bg-gray-800 p-6">
+			<div className="max-w-4xl mx-auto bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg border border-slate-100 dark:border-gray-700">
+				<div className="mb-8">
+					<h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+						Create New Event
+					</h1>
+					<p className="mt-2 text-slate-600 dark:text-gray-400">
+						Fill in the details below to create your event
+					</p>
+				</div>
 
 				{/* Error or Success Message */}
 				{errorMessage && (
-					<div className="text-red-600 mt-4">{errorMessage}</div>
+					<div className="mb-6 p-4 bg-rose-50 dark:bg-red-900 text-rose-700 dark:text-red-100 rounded-lg border border-rose-100 dark:border-red-800">
+						{errorMessage}
+					</div>
 				)}
 				{successMessage && (
-					<div className="text-green-600 mt-4">{successMessage}</div>
+					<div className="mb-6 p-4 bg-emerald-50 dark:bg-green-900 text-emerald-700 dark:text-green-100 rounded-lg border border-emerald-100 dark:border-green-800">
+						{successMessage}
+					</div>
 				)}
 
-				<form onSubmit={handleSubmit} className="mt-6 space-y-4">
-					<div>
-						<label className="block text-sm font-medium text-gray-700">
-							Event Type *
-						</label>
-						<select
-							name="eventType"
-							value={formData.eventType}
-							onChange={handleInputChange}
-							required
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
-						>
-							<option value="">Select event type</option>
-							<option value="conference">Conference</option>
-							<option value="seminar">Seminar</option>
-							<option value="talk">Talk</option>
-							<option value="workshop">Workshop</option>
-						</select>
+				<form onSubmit={handleSubmit} className="space-y-6">
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div>
+							<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+								Event Type{" "}
+								<span className="text-rose-500">*</span>
+							</label>
+							<select
+								name="eventType"
+								value={formData.eventType}
+								onChange={handleInputChange}
+								required
+								className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+							>
+								<option value="">Select event type</option>
+								<option value="conference">Conference</option>
+								<option value="seminar">Seminar</option>
+								<option value="talk">Talk</option>
+								<option value="workshop">Workshop</option>
+							</select>
+						</div>
+
+						<div>
+							<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+								Event Title{" "}
+								<span className="text-rose-500">*</span>
+							</label>
+							<input
+								type="text"
+								name="title"
+								value={formData.title}
+								onChange={handleInputChange}
+								required
+								placeholder="Enter event title"
+								className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm placeholder-slate-400"
+							/>
+						</div>
 					</div>
 
 					<div>
-						<label className="block text-sm font-medium text-gray-700">
-							Event Title *
-						</label>
-						<input
-							type="text"
-							name="title"
-							value={formData.title}
-							onChange={handleInputChange}
-							required
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-sm font-medium text-gray-700">
+						<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
 							Event Description
 						</label>
 						<textarea
 							name="description"
 							value={formData.description}
 							onChange={handleInputChange}
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
+							placeholder="Enter event description"
+							rows={4}
+							className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm placeholder-slate-400"
 						/>
 					</div>
 
-					<div>
-						<label className="block text-sm font-medium text-gray-700">
-							Event Date *
-						</label>
-						<input
-							type="date"
-							name="date"
-							value={formData.date}
-							onChange={handleInputChange}
-							required
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
-						/>
+					<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div>
+							<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+								Event Date{" "}
+								<span className="text-rose-500">*</span>
+							</label>
+							<input
+								type="date"
+								name="date"
+								value={formData.date}
+								onChange={handleInputChange}
+								required
+								className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+							/>
+						</div>
+
+						<div>
+							<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+								Event Time{" "}
+								<span className="text-rose-500">*</span>
+							</label>
+							<input
+								type="time"
+								name="time"
+								value={formData.time}
+								onChange={handleInputChange}
+								required
+								className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+							/>
+						</div>
 					</div>
 
 					<div>
-						<label className="block text-sm font-medium text-gray-700">
-							Event Time *
-						</label>
-						<input
-							type="time"
-							name="time"
-							value={formData.time}
-							onChange={handleInputChange}
-							required
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
-						/>
-					</div>
-
-					<div>
-						<label className="block text-sm font-medium text-gray-700">
-							Event Location *
+						<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+							Event Location{" "}
+							<span className="text-rose-500">*</span>
 						</label>
 						<input
 							type="text"
@@ -202,21 +225,48 @@ export default function CreateEvent() {
 							value={formData.location}
 							onChange={handleInputChange}
 							required
-							className="mt-2 p-3 border border-gray-300 rounded-lg w-full"
+							placeholder="Enter event location"
+							className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm placeholder-slate-400"
 						/>
 					</div>
 
-					<div className="mt-4">
+					<div className="flex justify-end pt-4">
 						<button
 							type="submit"
 							disabled={isSubmitting}
-							className={`w-full py-3 bg-blue-600 text-white rounded-lg ${
+							className={`px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium transition-colors duration-200 ${
 								isSubmitting
-									? "opacity-50"
-									: "hover:bg-blue-700"
+									? "opacity-50 cursor-not-allowed"
+									: "hover:bg-indigo-700"
 							}`}
 						>
-							{isSubmitting ? "Submitting..." : "Create Event"}
+							{isSubmitting ? (
+								<div className="flex items-center">
+									<svg
+										className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+										xmlns="http://www.w3.org/2000/svg"
+										fill="none"
+										viewBox="0 0 24 24"
+									>
+										<circle
+											className="opacity-25"
+											cx="12"
+											cy="12"
+											r="10"
+											stroke="currentColor"
+											strokeWidth="4"
+										></circle>
+										<path
+											className="opacity-75"
+											fill="currentColor"
+											d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+										></path>
+									</svg>
+									Creating Event...
+								</div>
+							) : (
+								"Create Event"
+							)}
 						</button>
 					</div>
 				</form>

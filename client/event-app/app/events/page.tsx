@@ -1,112 +1,205 @@
 "use client";
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useTheme } from "../context/ThemeContext";
 
-// Define the Event type
-type Event = {
+interface Event {
 	id: number;
 	title: string;
 	description: string;
 	date: string;
-	time: string;
 	location: string;
-};
+	organizer: string;
+	attendees: number;
+	status?: "upcoming" | "ongoing" | "completed";
+}
 
-const Events = () => {
-	const [events, setEvents] = useState<Event[]>([]); // Explicit type declaration
+export default function Events() {
+	const [events, setEvents] = useState<Event[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [filter, setFilter] = useState<
+		"all" | "upcoming" | "ongoing" | "completed"
+	>("all");
+	const router = useRouter();
+	const { theme } = useTheme();
 
 	useEffect(() => {
-		// Fetch events data
 		const fetchEvents = async () => {
-			const response = await fetch("http://localhost:3001/conferences"); // Replace with your actual endpoint
-			const data = await response.json();
-			setEvents(data);
-			setLoading(false);
+			try {
+				const response = await fetch(
+					"http://localhost:3001/conferences"
+				);
+				const data = await response.json();
+				// Add default status based on date
+				const eventsWithStatus = data.map((event: Event) => ({
+					...event,
+					status: getEventStatus(event.date),
+				}));
+				setEvents(eventsWithStatus);
+			} catch (error) {
+				console.error("Error fetching events:", error);
+			} finally {
+				setLoading(false);
+			}
 		};
 
 		fetchEvents();
 	}, []);
 
-	// Function to combine the date and time into a Date object for sorting
-	const sortEventsByDate = (events: Event[]) => {
-		return events.sort((a, b) => {
-			// Combine the date and time and create Date objects
-			const dateA = new Date(`${a.date}T${a.time}`);
-			const dateB = new Date(`${b.date}T${b.time}`);
+	const getEventStatus = (
+		date: string
+	): "upcoming" | "ongoing" | "completed" => {
+		const eventDate = new Date(date);
+		const now = new Date();
+		const diffTime = eventDate.getTime() - now.getTime();
+		const diffDays = diffTime / (1000 * 60 * 60 * 24);
 
-			console.log("Date A:", dateA, "Date B:", dateB); // Debugging the Date objects
-
-			// Sort in descending order (most recent first)
-			return dateB.getTime() - dateA.getTime();
-		});
+		if (diffDays < 0) return "completed";
+		if (diffDays <= 1) return "ongoing";
+		return "upcoming";
 	};
 
-	// Sorted events
-	const sortedEvents = sortEventsByDate(events);
+	const filteredEvents = events.filter((event) => {
+		if (filter === "all") return true;
+		return event.status === filter;
+	});
 
-	// Function to format date and time
-	const formatDateTime = (date: string, time: string) => {
-		if (!date || !time) return "Invalid event date or time";
+	const sortedEvents = filteredEvents.sort((a, b) => {
+		const dateA = new Date(a.date);
+		const dateB = new Date(b.date);
+		return dateB.getTime() - dateA.getTime();
+	});
 
-		// Remove the extra time part from the date and append the time
-		const dateWithoutTime = date.split("T")[0]; // Extract only the date part
-		const combinedDateTime = new Date(`${dateWithoutTime}T${time}`); // Combine properly without extra T
-
-		// Check if the date is invalid and return a fallback message
-		if (isNaN(combinedDateTime.getTime())) {
-			return "Invalid event date or time";
-		}
-
-		// Return formatted date and time without seconds
-		return combinedDateTime.toLocaleString("en-US", {
-			weekday: "long", // Day of the week
-			year: "numeric", // Full year
-			month: "long", // Full month name
-			day: "numeric", // Day of the month
-			hour: "numeric", // Hour in 12-hour format
-			minute: "numeric", // Minute
-			hour12: true, // 12-hour format (AM/PM)
-		});
+	const handleEventClick = (eventId: number) => {
+		router.push(`/events/${eventId}`);
 	};
+
+	if (loading) {
+		return (
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+			</div>
+		);
+	}
 
 	return (
-		<div className="min-h-screen bg-gray-100 p-6">
-			<div className="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow-lg">
-				<h1 className="text-3xl font-bold mb-6">Event List</h1>
+		<div className="min-h-screen bg-slate-50 dark:bg-gray-900">
+			{/* Header */}
+			<div className="bg-white dark:bg-gray-800 shadow border-b border-slate-100 dark:border-gray-700">
+				<div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+					<h1 className="text-3xl font-bold text-slate-800 dark:text-white">
+						Events
+					</h1>
+					<p className="mt-2 text-sm text-slate-600 dark:text-gray-400">
+						Browse and manage all events
+					</p>
+				</div>
+			</div>
 
-				{/* Display loading state */}
-				{loading ? (
-					<div>Loading...</div>
-				) : (
-					<div
-						className="space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto" // Adjust max height and enable scrolling
-					>
-						{sortedEvents.length === 0 ? (
-							<p>No events available.</p>
-						) : (
-							sortedEvents.map((event) => (
-								<div
-									key={event.id}
-									className="p-4 border border-gray-300 rounded-lg"
-								>
-									<h2 className="text-xl font-semibold">
-										{event.title}
-									</h2>
-									<p>{event.description}</p>
-									<p className="text-sm text-gray-500">
-										{formatDateTime(event.date, event.time)}
-									</p>
-									<p className="text-sm text-gray-500">
-										{event.location}
-									</p>
-								</div>
-							))
-						)}
+			{/* Main Content */}
+			<div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+				{/* Filters */}
+				<div className="mb-8">
+					<div className="flex space-x-4">
+						<button
+							onClick={() => setFilter("all")}
+							className={`px-4 py-2 rounded-md text-sm font-medium ${
+								filter === "all"
+									? "bg-indigo-600 text-white"
+									: "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-600 border border-slate-200 dark:border-gray-600"
+							}`}
+						>
+							All Events
+						</button>
+						<button
+							onClick={() => setFilter("upcoming")}
+							className={`px-4 py-2 rounded-md text-sm font-medium ${
+								filter === "upcoming"
+									? "bg-indigo-600 text-white"
+									: "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-600 border border-slate-200 dark:border-gray-600"
+							}`}
+						>
+							Upcoming
+						</button>
+						<button
+							onClick={() => setFilter("ongoing")}
+							className={`px-4 py-2 rounded-md text-sm font-medium ${
+								filter === "ongoing"
+									? "bg-indigo-600 text-white"
+									: "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-600 border border-slate-200 dark:border-gray-600"
+							}`}
+						>
+							Ongoing
+						</button>
+						<button
+							onClick={() => setFilter("completed")}
+							className={`px-4 py-2 rounded-md text-sm font-medium ${
+								filter === "completed"
+									? "bg-indigo-600 text-white"
+									: "bg-white dark:bg-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-600 border border-slate-200 dark:border-gray-600"
+							}`}
+						>
+							Completed
+						</button>
 					</div>
-				)}
+				</div>
+
+				{/* Events Grid */}
+				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+					{sortedEvents.length === 0 ? (
+						<div className="col-span-full text-center py-12">
+							<p className="text-lg text-slate-600 dark:text-gray-400">
+								No events found in this category.
+							</p>
+						</div>
+					) : (
+						sortedEvents.map((event) => (
+							<div
+								key={event.id}
+								className="bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700"
+								onClick={() => handleEventClick(event.id)}
+							>
+								<div className="p-6">
+									<div className="flex items-center justify-between mb-4">
+										<h2 className="text-xl font-semibold text-slate-800 dark:text-white">
+											{event.title}
+										</h2>
+										<span
+											className={`px-3 py-1 rounded-full text-sm font-medium ${
+												event.status === "upcoming"
+													? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
+													: event.status === "ongoing"
+													? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
+													: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
+											}`}
+										>
+											{event.status
+												? event.status
+														.charAt(0)
+														.toUpperCase() +
+												  event.status.slice(1)
+												: "Unknown"}
+										</span>
+									</div>
+									<p className="text-slate-600 dark:text-gray-400 mb-4 line-clamp-2">
+										{event.description}
+									</p>
+									<div className="flex items-center justify-between text-sm">
+										<span className="text-slate-500 dark:text-gray-400">
+											{new Date(
+												event.date
+											).toLocaleDateString()}
+										</span>
+										<span className="text-slate-500 dark:text-gray-400">
+											{event.attendees} attendees
+										</span>
+									</div>
+								</div>
+							</div>
+						))
+					)}
+				</div>
 			</div>
 		</div>
 	);
-};
-
-export default Events;
+}

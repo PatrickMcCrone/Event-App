@@ -1,109 +1,167 @@
 "use client";
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import Link from "next/link"; // Import Link from next/link
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useTheme } from "./context/ThemeContext";
 
-// Import the icons directly from Heroicons v2
-import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+export default function Sidebar() {
+	const pathname = usePathname();
+	const { theme } = useTheme();
 
-const Sidebar = () => {
-	const [isCollapsed, setIsCollapsed] = useState(false); // State to control sidebar visibility
+	const navigation = [
+		{
+			name: "Dashboard",
+			href: "/",
+			icon: (
+				<svg
+					className="w-6 h-6"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth={2}
+						d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+					/>
+				</svg>
+			),
+		},
+		{
+			name: "Events",
+			href: "/events",
+			icon: (
+				<svg
+					className="w-6 h-6"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth={2}
+						d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+					/>
+				</svg>
+			),
+		},
+		{
+			name: "Create Event",
+			href: "/create-event",
+			icon: (
+				<svg
+					className="w-6 h-6"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth={2}
+						d="M12 4v16m8-8H4"
+					/>
+				</svg>
+			),
+		},
+		{
+			name: "Settings",
+			href: "/settings",
+			icon: (
+				<svg
+					className="w-6 h-6"
+					fill="none"
+					stroke="currentColor"
+					viewBox="0 0 24 24"
+				>
+					<path
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth={2}
+						d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+					/>
+					<path
+						strokeLinecap="round"
+						strokeLinejoin="round"
+						strokeWidth={2}
+						d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+					/>
+				</svg>
+			),
+		},
+	];
 
 	return (
-		<motion.div
-			className={`bg-blue-600 text-white h-screen transition-all ${
-				isCollapsed ? "px-2" : "px-4"
-			}`} // Adjust padding dynamically
-			initial={{ width: "12rem" }} // Smaller initial width
-			animate={{ width: isCollapsed ? "4rem" : "12rem" }} // Set max width to 12rem when expanded
-			transition={{ duration: 0.3 }}
-		>
-			{/* Hamburger button for all platforms */}
-			<button
-				className={`text-white p-2 mb-4 bg-blue-700 rounded-md ${
-					isCollapsed ? "ml-0" : "ml-4"
-				} mt-4`} // Added mt-4 to shift button down
-				onClick={() => setIsCollapsed(!isCollapsed)}
-			>
-				{/* Show Bars3Icon (Hamburger Menu) when sidebar is collapsed, and XMarkIcon when it's expanded */}
-				{isCollapsed ? (
-					<Bars3Icon className="w-6 h-6 text-white" />
-				) : (
-					<XMarkIcon className="w-6 h-6 text-white" />
-				)}
-			</button>
-				
-			{/* Sidebar content */}
-			<motion.h1
-				className={`text-xl font-bold ${isCollapsed ? "hidden" : ""}`}
-				initial={{ opacity: 0 }}
-				animate={{ opacity: isCollapsed ? 0 : 1 }} // Fade in/out the title based on collapse state
-				transition={{ duration: 0.3, delay: 0.2 }} // Delay labels fade-in after sidebar expands
-			>
-				Event App
-			</motion.h1>
+		<div className="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-lg z-50">
+			{/* Logo */}
+			<div className="flex items-center justify-center h-16 px-4 border-b border-gray-200 dark:border-gray-700">
+				<h1 className="text-xl font-bold text-gray-900 dark:text-white">
+					Event App
+				</h1>
+			</div>
 
-			<nav className="mt-8">
-				<ul>
-					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<motion.a
-							href="/"
-							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-							initial={{ opacity: 1 }}
-							animate={{ opacity: isCollapsed ? 0 : 1 }} // Fade in/out each link based on collapse state
-							transition={{ duration: 0.3, delay: 0.2 }} // Delay fade-in to sync with sidebar expansion
-						>
-							{isCollapsed ? "" : "Dashboard"}
-						</motion.a>
-					</li>
-
-					{/* Updated "Events" link */}
-					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<Link
-							href="/events" // Link to the events page
-							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-						>
-							<motion.span
-								initial={{ opacity: 1 }}
-								animate={{ opacity: isCollapsed ? 0 : 1 }}
-								transition={{ duration: 0.3, delay: 0.2 }}
+			{/* Navigation */}
+			<nav className="mt-6">
+				<div className="px-4 space-y-1">
+					{navigation.map((item) => {
+						const isActive = pathname === item.href;
+						return (
+							<Link
+								key={item.name}
+								href={item.href}
+								className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors duration-200 ${
+									isActive
+										? "bg-blue-50 dark:bg-blue-900/50 text-blue-700 dark:text-blue-100"
+										: "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+								}`}
 							>
-								{isCollapsed ? "" : "Events"}
-							</motion.span>
-						</Link>
-					</li>
-
-					{/* Create Event link */}
-					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<Link
-							href="/create-event"
-							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-						>
-							<motion.span
-								initial={{ opacity: 1 }}
-								animate={{ opacity: isCollapsed ? 0 : 1 }}
-								transition={{ duration: 0.3, delay: 0.2 }}
-							>
-								{isCollapsed ? "" : "Create Event"}
-							</motion.span>
-						</Link>
-					</li>
-
-					<li className={`${isCollapsed ? "text-center" : ""}`}>
-						<motion.a
-							href="/"
-							className="block py-2 font-bold hover:bg-blue-700 rounded-lg"
-							initial={{ opacity: 1 }}
-							animate={{ opacity: isCollapsed ? 0 : 1 }}
-							transition={{ duration: 0.3, delay: 0.2 }}
-						>
-							{isCollapsed ? "" : "Settings"}
-						</motion.a>
-					</li>
-				</ul>
+								<span
+									className={`mr-3 ${
+										isActive
+											? "text-blue-700 dark:text-blue-100"
+											: "text-gray-500 dark:text-gray-400"
+									}`}
+								>
+									{item.icon}
+								</span>
+								{item.name}
+							</Link>
+						);
+					})}
+				</div>
 			</nav>
-		</motion.div>
-	);
-};
 
-export default Sidebar;
+			{/* User Profile */}
+			<div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-700">
+				<div className="flex items-center">
+					<div className="flex-shrink-0">
+						<div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+							<svg
+								className="w-5 h-5 text-gray-500 dark:text-gray-400"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path
+									strokeLinecap="round"
+									strokeLinejoin="round"
+									strokeWidth={2}
+									d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+								/>
+							</svg>
+						</div>
+					</div>
+					<div className="ml-3">
+						<p className="text-sm font-medium text-gray-900 dark:text-white">
+							John Doe
+						</p>
+						<p className="text-xs text-gray-500 dark:text-gray-400">
+							john@example.com
+						</p>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
