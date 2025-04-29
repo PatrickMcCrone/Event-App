@@ -25,6 +25,14 @@ export default function AuthWrapper({
 		}
 	}, [status, router, pathname]);
 
+	// Force a re-render when session changes
+	useEffect(() => {
+		if (status === "authenticated") {
+			// This will force a re-render of the entire app
+			router.refresh();
+		}
+	}, [status, router]);
+
 	if (status === "loading") {
 		return (
 			<div className="flex items-center justify-center min-h-screen">

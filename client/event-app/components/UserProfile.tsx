@@ -3,11 +3,32 @@
 import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function UserProfile() {
 	const { data: session, status } = useSession();
+	const router = useRouter();
 	const isLoading = status === "loading";
 	const isAuthenticated = status === "authenticated";
+
+	const handleSignIn = async () => {
+		try {
+			const result = await signIn("google", {
+				callbackUrl: "/",
+				redirect: true,
+				prompt: "select_account",
+				access_type: "offline",
+				response_type: "code",
+			});
+
+			// If sign in was successful, force a reload of the page
+			if (result?.ok) {
+				window.location.href = "/";
+			}
+		} catch (error) {
+			console.error("Sign in error:", error);
+		}
+	};
 
 	return (
 		<div className="absolute bottom-0 left-0 w-full p-4 border-t border-gray-200 dark:border-gray-700">
@@ -63,7 +84,7 @@ export default function UserProfile() {
 				</div>
 			) : (
 				<button
-					onClick={() => signIn("google")}
+					onClick={handleSignIn}
 					className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
 				>
 					<svg

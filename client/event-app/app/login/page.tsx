@@ -19,6 +19,11 @@ export default function LoginPage() {
 				access_type: "offline",
 				response_type: "code",
 			});
+
+			// If sign in was successful, force a reload of the page
+			if (result?.ok) {
+				window.location.href = "/";
+			}
 		} catch (error) {
 			console.error("Sign in error:", error);
 		} finally {
@@ -56,7 +61,7 @@ export default function LoginPage() {
 					</div>
 				)}
 
-				<div className="mt-8 space-y-6">
+				<div>
 					<button
 						onClick={handleGoogleSignIn}
 						disabled={isLoading}

@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "./context/ThemeContext";
+import { useSession } from "next-auth/react";
 
 // Define the type for a single event
 interface Event {
@@ -14,9 +15,12 @@ export default function Home() {
 	const [events, setEvents] = useState<Event[]>([]);
 	const [totalUsers, setTotalUsers] = useState<number>(0);
 	const [totalEvents, setTotalEvents] = useState<number>(0);
-	const [isClient, setIsClient] = useState(false); // State to track if it's client-side
+	const [isClient, setIsClient] = useState(false);
 	const { theme } = useTheme();
 	const router = useRouter();
+	const { data: session, status } = useSession();
+	const isLoading = status === "loading";
+	const isAuthenticated = status === "authenticated";
 
 	// Use useEffect to ensure that the router is only used on the client
 	useEffect(() => {
@@ -74,7 +78,7 @@ export default function Home() {
 	// Handle the button click to navigate to the create-event page
 	const handleCreateEventClick = () => {
 		if (router) {
-			router.push("/create-event"); // Navigate to the "Create Event" page
+			router.push("/create-event");
 		}
 	};
 
@@ -90,8 +94,12 @@ export default function Home() {
 		}
 	};
 
-	if (!isClient) {
-		return null; // Ensure that nothing is rendered on SSR
+	if (!isClient || isLoading) {
+		return (
+			<div className="flex items-center justify-center min-h-screen">
+				<div className="w-8 h-8 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+			</div>
+		);
 	}
 
 	return (
@@ -110,12 +118,21 @@ export default function Home() {
 							management.
 						</p>
 						<div className="mt-10 flex items-center justify-center gap-x-6">
-							<button
-								onClick={handleCreateEventClick}
-								className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
-							>
-								Create New Event
-							</button>
+							{isAuthenticated ? (
+								<button
+									onClick={handleCreateEventClick}
+									className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
+								>
+									Create New Event
+								</button>
+							) : (
+								<button
+									onClick={() => router.push("/login")}
+									className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
+								>
+									Sign In
+								</button>
+							)}
 							<button
 								onClick={handleBrowseEventsClick}
 								className="rounded-md bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
