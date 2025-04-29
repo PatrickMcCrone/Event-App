@@ -13,6 +13,7 @@ interface Event {
 export default function Home() {
 	const [events, setEvents] = useState<Event[]>([]);
 	const [totalUsers, setTotalUsers] = useState<number>(0);
+	const [totalEvents, setTotalEvents] = useState<number>(0);
 	const [isClient, setIsClient] = useState(false); // State to track if it's client-side
 	const { theme } = useTheme();
 	const router = useRouter();
@@ -39,6 +40,9 @@ export default function Home() {
 						return dateB.getTime() - dateA.getTime();
 					}
 				);
+
+				// Set total events count
+				setTotalEvents(eventsData.length);
 
 				// Slice the sorted events to get only the 3 most recent
 				setEvents(sortedEvents.slice(0, 3));
@@ -140,7 +144,7 @@ export default function Home() {
 								Events Created
 							</dt>
 							<dd className="order-first text-3xl font-semibold tracking-tight text-slate-800 dark:text-white sm:text-5xl">
-								{events.length}
+								{totalEvents}
 							</dd>
 						</div>
 					</dl>
