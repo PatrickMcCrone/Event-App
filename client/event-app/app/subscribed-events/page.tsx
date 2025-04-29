@@ -14,24 +14,30 @@ interface Event {
 	description: string;
 	date: string;
 	location: string;
-	organizer: string;
-	attendees: number;
 	status?: "upcoming" | "ongoing" | "completed";
-	isSubscribed?: boolean;
 }
 
-export default function Events() {
-	const [events, setEvents] = useState<Event[]>([]);
+export default function SubscribedEvents() {
+	const { data: session } = useSession();
+	const [subscribedEvents, setSubscribedEvents] = useState<Event[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [filter, setFilter] = useState<
-		"all" | "upcoming" | "ongoing" | "completed"
-	>("all");
-	const [hoveredEventId, setHoveredEventId] = useState<number | null>(null);
+	const [filter, setFilter] = useState<"all" | "upcoming" | "ongoing" | "completed">("all");
 	const [authToken, setAuthToken] = useState<string | null>(null);
+	const [hoveredEventId, setHoveredEventId] = useState<number | null>(null);
 	const router = useRouter();
 	const { theme } = useTheme();
-	const { data: session } = useSession();
+
+	const getEventStatus = (date: string): "upcoming" | "ongoing" | "completed" => {
+		const eventDate = new Date(date);
+		const now = new Date();
+		const diffTime = eventDate.getTime() - now.getTime();
+		const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+		if (diffDays < 0) return "completed";
+		if (diffDays <= 1) return "ongoing";
+		return "upcoming";
+	};
 
 	// Get auth token when session changes
 	useEffect(() => {
@@ -64,108 +70,54 @@ export default function Events() {
 		getAuthToken();
 	}, [session]);
 
-	// Fetch events and user's subscriptions
 	useEffect(() => {
-		const fetchEventsAndSubscriptions = async () => {
-			if (!authToken) {
+		const fetchSubscribedEvents = async () => {
+			if (!session?.user?.id || !authToken) {
 				setLoading(false);
 				return;
 			}
 
 			try {
-				// Fetch all events
-				const eventsResponse = await fetch('http://localhost:3001/conferences');
-				if (!eventsResponse.ok) {
-					throw new Error('Failed to fetch events');
-				}
-				const eventsData = await eventsResponse.json();
+				// Fetch subscribed events
+				const response = await fetch(`http://localhost:3001/users/${session.user.id}/subscriptions`, {
+					headers: {
+						'Authorization': `Bearer ${authToken}`,
+						'Content-Type': 'application/json',
+					},
+				});
 
-				// If user is logged in, fetch their subscriptions
-				let subscriptions: number[] = [];
-				if (session?.user?.id) {
-					const subsResponse = await fetch(`http://localhost:3001/users/${session.user.id}/subscriptions`, {
-						headers: {
-							'Authorization': `Bearer ${authToken}`,
-						},
-					});
-					if (subsResponse.ok) {
-						const subsData = await subsResponse.json();
-						subscriptions = subsData.map((sub: any) => sub.conference_id);
-					}
+				if (!response.ok) {
+					throw new Error('Failed to fetch subscriptions');
 				}
 
-				// Combine events with subscription status
-				const eventsWithStatus = eventsData.map((event: Event) => ({
-					...event,
-					status: getEventStatus(event.date),
-					isSubscribed: subscriptions.includes(event.id),
+				const subscriptionsData = await response.json();
+				
+				if (!Array.isArray(subscriptionsData)) {
+					throw new Error('Invalid subscription data received');
+				}
+
+				// Transform the data to match our Event interface
+				const events = subscriptionsData.map(sub => ({
+					id: sub.conference_id,
+					title: sub.title,
+					description: sub.description,
+					date: sub.date,
+					location: sub.location,
+					status: getEventStatus(sub.date)
 				}));
-
-				setEvents(eventsWithStatus);
+				
+				setSubscribedEvents(events);
 				setError(null);
 			} catch (error) {
-				console.error('Error fetching events:', error);
-				setError(error instanceof Error ? error.message : 'Failed to fetch events');
+				console.error('Error fetching subscribed events:', error);
+				setError(error instanceof Error ? error.message : "Failed to fetch subscribed events");
 			} finally {
 				setLoading(false);
 			}
 		};
 
-		fetchEventsAndSubscriptions();
+		fetchSubscribedEvents();
 	}, [session?.user?.id, authToken]);
-
-	const getEventStatus = (
-		date: string
-	): "upcoming" | "ongoing" | "completed" => {
-		const eventDate = new Date(date);
-		const now = new Date();
-		const diffTime = eventDate.getTime() - now.getTime();
-		const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
-		if (diffDays < 0) return "completed";
-		if (diffDays <= 1) return "ongoing";
-		return "upcoming";
-	};
-
-	const filteredEvents = events.filter((event) => {
-		if (filter === "all") return true;
-		return event.status === filter;
-	});
-
-	const sortedEvents = filteredEvents.sort((a, b) => {
-		const dateA = new Date(a.date);
-		const dateB = new Date(b.date);
-		return dateB.getTime() - dateA.getTime();
-	});
-
-	const handleEventClick = (eventId: number) => {
-		router.push(`/events/${eventId}`);
-	};
-
-	const handleSubscribe = async (eventId: number) => {
-		if (!session?.user?.id || !authToken) return;
-
-		try {
-			const response = await fetch(`http://localhost:3001/conferences/${eventId}/subscribe`, {
-				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${authToken}`,
-					'Content-Type': 'application/json',
-				},
-			});
-
-			if (!response.ok) {
-				throw new Error('Failed to subscribe');
-			}
-
-			// Update local state
-			setEvents(events.map(event => 
-				event.id === eventId ? { ...event, isSubscribed: true } : event
-			));
-		} catch (error) {
-			console.error('Error subscribing:', error);
-		}
-	};
 
 	const handleUnsubscribe = async (eventId: number) => {
 		if (!session?.user?.id || !authToken) return;
@@ -183,14 +135,21 @@ export default function Events() {
 				throw new Error('Failed to unsubscribe');
 			}
 
-			// Update local state
-			setEvents(events.map(event => 
-				event.id === eventId ? { ...event, isSubscribed: false } : event
-			));
+			// Remove the event from the list
+			setSubscribedEvents(events => events.filter(event => event.id !== eventId));
 		} catch (error) {
 			console.error('Error unsubscribing:', error);
 		}
 	};
+
+	const handleEventClick = (eventId: number) => {
+		router.push(`/events/${eventId}`);
+	};
+
+	const filteredEvents = subscribedEvents.filter((event) => {
+		if (filter === "all") return true;
+		return event.status === filter;
+	});
 
 	if (loading) {
 		return (
@@ -206,10 +165,10 @@ export default function Events() {
 			<div className="bg-white dark:bg-gray-800 shadow border-b border-slate-100 dark:border-gray-700">
 				<div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
 					<h1 className="text-3xl font-bold text-slate-800 dark:text-white">
-						Events
+						Subscribed Events
 					</h1>
 					<p className="mt-2 text-sm text-slate-600 dark:text-gray-400">
-						Browse and manage all events
+						View and manage your subscribed events
 					</p>
 				</div>
 			</div>
@@ -264,14 +223,14 @@ export default function Events() {
 
 				{/* Events Grid */}
 				<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-					{sortedEvents.length === 0 ? (
+					{filteredEvents.length === 0 ? (
 						<div className="col-span-full text-center py-12">
 							<p className="text-lg text-slate-600 dark:text-gray-400">
-								No events found in this category.
+								No subscribed events found in this category.
 							</p>
 						</div>
 					) : (
-						sortedEvents.map((event) => (
+						filteredEvents.map((event) => (
 							<div
 								key={event.id}
 								className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700"
@@ -294,9 +253,7 @@ export default function Events() {
 											}`}
 										>
 											{event.status
-												? event.status
-														.charAt(0)
-														.toUpperCase() +
+												? event.status.charAt(0).toUpperCase() +
 												  event.status.slice(1)
 												: "Unknown"}
 										</span>
@@ -314,23 +271,13 @@ export default function Events() {
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
-											event.isSubscribed ? handleUnsubscribe(event.id) : handleSubscribe(event.id);
+											handleUnsubscribe(event.id);
 										}}
-										className={`absolute bottom-4 right-4 p-2 rounded-md transition-colors duration-200 ${
-											event.isSubscribed
-												? "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600"
-												: "bg-emerald-500 text-white hover:bg-emerald-600"
-										}`}
+										className="absolute bottom-4 right-4 p-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
 									>
-										{event.isSubscribed ? (
-											<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-												<path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-											</svg>
-										) : (
-											<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-												<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-											</svg>
-										)}
+										<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+											<path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+										</svg>
 									</button>
 								)}
 							</div>
@@ -340,4 +287,4 @@ export default function Events() {
 			</div>
 		</div>
 	);
-}
+} 

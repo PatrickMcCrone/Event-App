@@ -525,6 +525,34 @@ app.post("/settings/reminders", async (req, res) => {
 	}
 });
 
+// Get user's subscriptions
+app.get("/users/:id/subscriptions", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const userId = req.user.id;
+		
+		// Verify the requested user ID matches the authenticated user
+		if (userId !== parseInt(req.params.id)) {
+			return res.status(403).json({ error: "Not authorized to view these subscriptions" });
+		}
+
+		const result = await client.query(
+			`SELECT es.*, c.title, c.description, c.date, c.location 
+			 FROM event_subscriptions es
+			 JOIN conferences c ON es.conference_id = c.id
+			 WHERE es.user_id = $1`,
+			[userId]
+		);
+
+		res.json(result.rows);
+	} catch (error) {
+		console.error("Error fetching subscriptions:", error);
+		res.status(500).json({ error: "Failed to fetch subscriptions" });
+	} finally {
+		client.release();
+	}
+});
+
 app.listen(PORT, () => {
 	console.log(`Server is running on port ${PORT}`);
 });
