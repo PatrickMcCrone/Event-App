@@ -4,7 +4,13 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "../context/ThemeContext";
 import { useSession } from "next-auth/react";
 import AuthWrapper from "../../components/AuthWrapper";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "@heroicons/react/24/outline";
 
@@ -12,7 +18,10 @@ interface Event {
 	id: number;
 	title: string;
 	description: string;
-	date: string;
+	start_date: string;
+	end_date: string;
+	start_time: string;
+	end_time: string;
 	location: string;
 	status?: "upcoming" | "ongoing" | "completed";
 }
@@ -22,21 +31,46 @@ export default function SubscribedEvents() {
 	const [subscribedEvents, setSubscribedEvents] = useState<Event[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [filter, setFilter] = useState<"all" | "upcoming" | "ongoing" | "completed">("all");
+	const [filter, setFilter] = useState<
+		"all" | "upcoming" | "ongoing" | "completed"
+	>("all");
 	const [authToken, setAuthToken] = useState<string | null>(null);
 	const [hoveredEventId, setHoveredEventId] = useState<number | null>(null);
 	const router = useRouter();
 	const { theme } = useTheme();
 
-	const getEventStatus = (date: string): "upcoming" | "ongoing" | "completed" => {
-		const eventDate = new Date(date);
+	const getEventStatus = (
+		startDate: string,
+		endDate: string
+	): "upcoming" | "ongoing" | "completed" => {
 		const now = new Date();
-		const diffTime = eventDate.getTime() - now.getTime();
-		const diffDays = diffTime / (1000 * 60 * 60 * 24);
+		const eventStartDate = new Date(startDate);
+		const eventEndDate = new Date(endDate);
 
-		if (diffDays < 0) return "completed";
-		if (diffDays <= 1) return "ongoing";
+		// Set time to start of day for date-only comparison
+		const startOfDay = new Date(now);
+		startOfDay.setHours(0, 0, 0, 0);
+
+		const eventStartOfDay = new Date(eventStartDate);
+		eventStartOfDay.setHours(0, 0, 0, 0);
+
+		const eventEndOfDay = new Date(eventEndDate);
+		eventEndOfDay.setHours(23, 59, 59, 999);
+
+		if (now > eventEndOfDay) return "completed";
+		if (now >= eventStartOfDay && now <= eventEndOfDay) return "ongoing";
 		return "upcoming";
+	};
+
+	const formatDateRange = (startDate: string, endDate: string) => {
+		const start = new Date(startDate);
+		const end = new Date(endDate);
+
+		if (start.toDateString() === end.toDateString()) {
+			return start.toLocaleDateString();
+		}
+
+		return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 	};
 
 	// Get auth token when session changes
@@ -44,25 +78,28 @@ export default function SubscribedEvents() {
 		const getAuthToken = async () => {
 			if (session?.user) {
 				try {
-					const authResponse = await fetch('http://localhost:3001/auth/google', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							name: session.user.name,
-							email: session.user.email,
-							picture: session.user.image,
-							googleId: session.user.googleId,
-						}),
-					});
+					const authResponse = await fetch(
+						"http://localhost:3001/auth/google",
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: session.user.name,
+								email: session.user.email,
+								picture: session.user.image,
+								googleId: session.user.googleId,
+							}),
+						}
+					);
 
 					if (authResponse.ok) {
 						const authData = await authResponse.json();
 						setAuthToken(authData.token);
 					}
 				} catch (error) {
-					console.error('Error getting auth token:', error);
+					console.error("Error getting auth token:", error);
 				}
 			}
 		};
@@ -79,38 +116,48 @@ export default function SubscribedEvents() {
 
 			try {
 				// Fetch subscribed events
-				const response = await fetch(`http://localhost:3001/users/${session.user.id}/subscriptions`, {
-					headers: {
-						'Authorization': `Bearer ${authToken}`,
-						'Content-Type': 'application/json',
-					},
-				});
+				const response = await fetch(
+					`http://localhost:3001/users/${session.user.id}/subscriptions`,
+					{
+						headers: {
+							Authorization: `Bearer ${authToken}`,
+							"Content-Type": "application/json",
+						},
+					}
+				);
 
 				if (!response.ok) {
-					throw new Error('Failed to fetch subscriptions');
+					throw new Error("Failed to fetch subscriptions");
 				}
 
 				const subscriptionsData = await response.json();
-				
+
 				if (!Array.isArray(subscriptionsData)) {
-					throw new Error('Invalid subscription data received');
+					throw new Error("Invalid subscription data received");
 				}
 
 				// Transform the data to match our Event interface
-				const events = subscriptionsData.map(sub => ({
-					id: sub.conference_id,
+				const events = subscriptionsData.map((sub) => ({
+					id: sub.event_id,
 					title: sub.title,
 					description: sub.description,
-					date: sub.date,
+					start_date: sub.start_date,
+					end_date: sub.end_date,
+					start_time: sub.start_time,
+					end_time: sub.end_time,
 					location: sub.location,
-					status: getEventStatus(sub.date)
+					status: getEventStatus(sub.start_date, sub.end_date),
 				}));
-				
+
 				setSubscribedEvents(events);
 				setError(null);
 			} catch (error) {
-				console.error('Error fetching subscribed events:', error);
-				setError(error instanceof Error ? error.message : "Failed to fetch subscribed events");
+				console.error("Error fetching subscribed events:", error);
+				setError(
+					error instanceof Error
+						? error.message
+						: "Failed to fetch subscribed events"
+				);
 			} finally {
 				setLoading(false);
 			}
@@ -123,22 +170,27 @@ export default function SubscribedEvents() {
 		if (!session?.user?.id || !authToken) return;
 
 		try {
-			const response = await fetch(`http://localhost:3001/conferences/${eventId}/subscribe`, {
-				method: 'DELETE',
-				headers: {
-					'Authorization': `Bearer ${authToken}`,
-					'Content-Type': 'application/json',
-				},
-			});
+			const response = await fetch(
+				`http://localhost:3001/events/${eventId}/subscribe`,
+				{
+					method: "DELETE",
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						"Content-Type": "application/json",
+					},
+				}
+			);
 
 			if (!response.ok) {
-				throw new Error('Failed to unsubscribe');
+				throw new Error("Failed to unsubscribe");
 			}
 
 			// Remove the event from the list
-			setSubscribedEvents(events => events.filter(event => event.id !== eventId));
+			setSubscribedEvents((events) =>
+				events.filter((event) => event.id !== eventId)
+			);
 		} catch (error) {
-			console.error('Error unsubscribing:', error);
+			console.error("Error unsubscribing:", error);
 		}
 	};
 
@@ -146,10 +198,32 @@ export default function SubscribedEvents() {
 		router.push(`/events/${eventId}`);
 	};
 
-	const filteredEvents = subscribedEvents.filter((event) => {
-		if (filter === "all") return true;
-		return event.status === filter;
-	});
+	const filteredEvents = subscribedEvents
+		.filter((event) => {
+			if (filter === "all") return true;
+			return event.status === filter;
+		})
+		.sort((a, b) => {
+			// First sort by status priority
+			const statusPriority: Record<string, number> = {
+				ongoing: 0,
+				upcoming: 1,
+				completed: 2,
+			};
+
+			// Ensure we have valid status values
+			const statusA = a.status || "completed";
+			const statusB = b.status || "completed";
+
+			const statusDiff =
+				statusPriority[statusA] - statusPriority[statusB];
+			if (statusDiff !== 0) return statusDiff;
+
+			// If same status, sort by start date (most recent first)
+			const dateA = new Date(a.start_date);
+			const dateB = new Date(b.start_date);
+			return dateB.getTime() - dateA.getTime();
+		});
 
 	if (loading) {
 		return (
@@ -233,14 +307,14 @@ export default function SubscribedEvents() {
 						filteredEvents.map((event) => (
 							<div
 								key={event.id}
-								className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700"
+								className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700 min-h-[200px]"
 								onClick={() => handleEventClick(event.id)}
 								onMouseEnter={() => setHoveredEventId(event.id)}
 								onMouseLeave={() => setHoveredEventId(null)}
 							>
-								<div className="p-6">
-									<div className="flex items-center justify-between mb-4">
-										<h2 className="text-xl font-semibold text-slate-800 dark:text-white">
+								<div className="p-6 flex flex-col h-full">
+									<div className="flex items-center justify-between h-12">
+										<h2 className="text-xl font-semibold text-slate-800 dark:text-white line-clamp-1">
 											{event.title}
 										</h2>
 										<span
@@ -253,17 +327,23 @@ export default function SubscribedEvents() {
 											}`}
 										>
 											{event.status
-												? event.status.charAt(0).toUpperCase() +
+												? event.status
+														.charAt(0)
+														.toUpperCase() +
 												  event.status.slice(1)
 												: "Unknown"}
 										</span>
 									</div>
-									<p className="text-slate-600 dark:text-gray-400 mb-4 line-clamp-2">
-										{event.description}
-									</p>
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-slate-500 dark:text-gray-400">
-											{new Date(event.date).toLocaleDateString()}
+									<div className="flex-1" />
+									<div className="space-y-4">
+										<p className="text-slate-600 dark:text-gray-400 line-clamp-2">
+											{event.description}
+										</p>
+										<span className="block text-sm text-slate-500 dark:text-gray-400">
+											{formatDateRange(
+												event.start_date,
+												event.end_date
+											)}
 										</span>
 									</div>
 								</div>
@@ -275,8 +355,17 @@ export default function SubscribedEvents() {
 										}}
 										className="absolute bottom-4 right-4 p-2 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200"
 									>
-										<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-											<path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											className="h-5 w-5"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+										>
+											<path
+												fillRule="evenodd"
+												d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+												clipRule="evenodd"
+											/>
 										</svg>
 									</button>
 								)}
@@ -287,4 +376,4 @@ export default function SubscribedEvents() {
 			</div>
 		</div>
 	);
-} 
+}

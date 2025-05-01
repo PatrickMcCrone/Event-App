@@ -18,7 +18,10 @@ interface Event {
 	id: number;
 	title: string;
 	description: string;
-	date: string;
+	start_date: string;
+	end_date: string;
+	start_time: string;
+	end_time: string;
 	location: string;
 	organizer: string;
 	attendees: number;
@@ -42,6 +45,32 @@ export default function Events() {
 	const isLoading = status === "loading";
 	const isAuthenticated = status === "authenticated";
 	const isAdmin = session?.user?.admin === true;
+	const [settings, setSettings] = useState({ timezone: "" });
+
+	// Fetch settings first
+	useEffect(() => {
+		const fetchSettings = async () => {
+			if (session?.user?.id) {
+				try {
+					console.log("Fetching user settings...");
+					const response = await fetch(
+						`http://localhost:3001/settings/reminders/${session.user.id}`
+					);
+					if (response.ok) {
+						const data = await response.json();
+						console.log("Received settings:", data);
+						setSettings((prev) => ({
+							...prev,
+							timezone: data.timezone || "America/New_York",
+						}));
+					}
+				} catch (error) {
+					console.error("Error fetching settings:", error);
+				}
+			}
+		};
+		fetchSettings();
+	}, [session?.user?.id]);
 
 	// Get auth token when session changes
 	useEffect(() => {
@@ -77,23 +106,33 @@ export default function Events() {
 		getAuthToken();
 	}, [session]);
 
-	// Fetch events and user's subscriptions
+	// Fetch events only after settings and auth token are available
 	useEffect(() => {
 		const fetchEventsAndSubscriptions = async () => {
-			if (!authToken) {
-				setLoading(false);
+			if (!authToken || !settings.timezone) {
 				return;
 			}
 
+			setLoading(true);
 			try {
+				console.log(
+					"Fetching events with timezone:",
+					settings.timezone
+				);
 				// Fetch all events
 				const eventsResponse = await fetch(
-					"http://localhost:3001/conferences"
+					`http://localhost:3001/events?timezone=${settings.timezone}`,
+					{
+						headers: {
+							Authorization: `Bearer ${authToken}`,
+						},
+					}
 				);
 				if (!eventsResponse.ok) {
 					throw new Error("Failed to fetch events");
 				}
 				const eventsData = await eventsResponse.json();
+				console.log("Received events data:", eventsData[0]); // Log first event
 
 				// If user is logged in, fetch their subscriptions
 				let subscriptions: number[] = [];
@@ -109,7 +148,7 @@ export default function Events() {
 					if (subsResponse.ok) {
 						const subsData = await subsResponse.json();
 						subscriptions = subsData.map(
-							(sub: any) => sub.conference_id
+							(sub: any) => sub.event_id
 						);
 					}
 				}
@@ -117,7 +156,7 @@ export default function Events() {
 				// Combine events with subscription status
 				const eventsWithStatus = eventsData.map((event: Event) => ({
 					...event,
-					status: getEventStatus(event.date),
+					status: getEventStatus(event.start_date, event.end_date),
 					isSubscribed: subscriptions.includes(event.id),
 				}));
 
@@ -136,18 +175,28 @@ export default function Events() {
 		};
 
 		fetchEventsAndSubscriptions();
-	}, [session?.user?.id, authToken]);
+	}, [session?.user?.id, authToken, settings.timezone]);
 
 	const getEventStatus = (
-		date: string
+		startDate: string,
+		endDate: string
 	): "upcoming" | "ongoing" | "completed" => {
-		const eventDate = new Date(date);
 		const now = new Date();
-		const diffTime = eventDate.getTime() - now.getTime();
-		const diffDays = diffTime / (1000 * 60 * 60 * 24);
+		const eventStartDate = new Date(startDate);
+		const eventEndDate = new Date(endDate);
 
-		if (diffDays < 0) return "completed";
-		if (diffDays <= 1) return "ongoing";
+		// Set time to start of day for date-only comparison
+		const startOfDay = new Date(now);
+		startOfDay.setHours(0, 0, 0, 0);
+
+		const eventStartOfDay = new Date(eventStartDate);
+		eventStartOfDay.setHours(0, 0, 0, 0);
+
+		const eventEndOfDay = new Date(eventEndDate);
+		eventEndOfDay.setHours(23, 59, 59, 999);
+
+		if (now > eventEndOfDay) return "completed";
+		if (now >= eventStartOfDay && now <= eventEndOfDay) return "ongoing";
 		return "upcoming";
 	};
 
@@ -157,8 +206,23 @@ export default function Events() {
 	});
 
 	const sortedEvents = filteredEvents.sort((a, b) => {
-		const dateA = new Date(a.date);
-		const dateB = new Date(b.date);
+		// First sort by status priority
+		const statusPriority: Record<string, number> = {
+			ongoing: 0,
+			upcoming: 1,
+			completed: 2,
+		};
+
+		// Ensure we have valid status values
+		const statusA = a.status || "completed";
+		const statusB = b.status || "completed";
+
+		const statusDiff = statusPriority[statusA] - statusPriority[statusB];
+		if (statusDiff !== 0) return statusDiff;
+
+		// If same status, sort by start date (most recent first)
+		const dateA = new Date(a.start_date);
+		const dateB = new Date(b.start_date);
 		return dateB.getTime() - dateA.getTime();
 	});
 
@@ -171,7 +235,7 @@ export default function Events() {
 
 		try {
 			const response = await fetch(
-				`http://localhost:3001/conferences/${eventId}/subscribe`,
+				`http://localhost:3001/events/${eventId}/subscribe`,
 				{
 					method: "POST",
 					headers: {
@@ -186,8 +250,8 @@ export default function Events() {
 			}
 
 			// Update local state
-			setEvents(
-				events.map((event) =>
+			setEvents((prevEvents) =>
+				prevEvents.map((event) =>
 					event.id === eventId
 						? { ...event, isSubscribed: true }
 						: event
@@ -203,7 +267,7 @@ export default function Events() {
 
 		try {
 			const response = await fetch(
-				`http://localhost:3001/conferences/${eventId}/subscribe`,
+				`http://localhost:3001/events/${eventId}/subscribe`,
 				{
 					method: "DELETE",
 					headers: {
@@ -218,8 +282,8 @@ export default function Events() {
 			}
 
 			// Update local state
-			setEvents(
-				events.map((event) =>
+			setEvents((prevEvents) =>
+				prevEvents.map((event) =>
 					event.id === eventId
 						? { ...event, isSubscribed: false }
 						: event
@@ -228,6 +292,25 @@ export default function Events() {
 		} catch (error) {
 			console.error("Error unsubscribing:", error);
 		}
+	};
+
+	// Format time to 12-hour format
+	const formatTime = (timeObj: any) => {
+		console.log("Formatting time object:", timeObj);
+		if (!timeObj || !timeObj.formatted) return "";
+		return timeObj.formatted;
+	};
+
+	// Format date range
+	const formatDateRange = (startDate: string, endDate: string) => {
+		const start = new Date(startDate);
+		const end = new Date(endDate);
+
+		if (start.toDateString() === end.toDateString()) {
+			return start.toLocaleDateString();
+		}
+
+		return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 	};
 
 	if (loading) {
@@ -312,14 +395,14 @@ export default function Events() {
 						sortedEvents.map((event) => (
 							<div
 								key={event.id}
-								className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700"
+								className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700 min-h-[200px]"
 								onClick={() => handleEventClick(event.id)}
 								onMouseEnter={() => setHoveredEventId(event.id)}
 								onMouseLeave={() => setHoveredEventId(null)}
 							>
-								<div className="p-6">
-									<div className="flex items-center justify-between mb-4">
-										<h2 className="text-xl font-semibold text-slate-800 dark:text-white">
+								<div className="p-6 flex flex-col h-full">
+									<div className="flex items-center justify-between h-12">
+										<h2 className="text-xl font-semibold text-slate-800 dark:text-white line-clamp-1">
 											{event.title}
 										</h2>
 										<span
@@ -339,14 +422,16 @@ export default function Events() {
 												: "Unknown"}
 										</span>
 									</div>
-									<p className="text-slate-600 dark:text-gray-400 mb-4 line-clamp-2">
-										{event.description}
-									</p>
-									<div className="flex items-center justify-between text-sm">
-										<span className="text-slate-500 dark:text-gray-400">
-											{new Date(
-												event.date
-											).toLocaleDateString()}
+									<div className="flex-1" />
+									<div className="space-y-4">
+										<p className="text-slate-600 dark:text-gray-400 line-clamp-2">
+											{event.description}
+										</p>
+										<span className="block text-sm text-slate-500 dark:text-gray-400">
+											{formatDateRange(
+												event.start_date,
+												event.end_date
+											)}
 										</span>
 									</div>
 								</div>

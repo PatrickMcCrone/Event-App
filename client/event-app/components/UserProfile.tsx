@@ -64,11 +64,11 @@ export default function UserProfile() {
 					</div>
 					<button
 						onClick={() => signOut()}
-						className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+						className="group text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-all duration-300 ease-in-out"
 						title="Sign out"
 					>
 						<svg
-							className="w-5 h-5"
+							className="w-5 h-5 transition-transform duration-300 ease-in-out group-hover:translate-x-1 group-hover:scale-110"
 							fill="none"
 							stroke="currentColor"
 							viewBox="0 0 24 24"

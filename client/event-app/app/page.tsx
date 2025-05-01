@@ -8,7 +8,17 @@ import { useSession } from "next-auth/react";
 interface Event {
 	id: number;
 	title: string;
-	date: string;
+	description: string;
+	start_date: string;
+	end_date: string;
+	start_time: string;
+	end_time: string;
+	location: string;
+	type: string;
+	creator: {
+		name: string;
+		email: string;
+	};
 }
 
 export default function Home() {
@@ -33,15 +43,26 @@ export default function Home() {
 			try {
 				// Fetch events
 				const eventsResponse = await fetch(
-					"http://localhost:3001/conferences"
+					"http://localhost:3001/events"
 				);
+				if (!eventsResponse.ok) {
+					throw new Error("Failed to fetch events");
+				}
 				const eventsData = await eventsResponse.json();
+
+				if (!Array.isArray(eventsData)) {
+					throw new Error("Invalid events data received");
+				}
 
 				// Sort events by the date in descending order (latest first)
 				const sortedEvents: Event[] = eventsData.sort(
 					(a: Event, b: Event) => {
-						const dateA: Date = new Date(a.date);
-						const dateB: Date = new Date(b.date);
+						const dateA: Date = new Date(
+							a.start_date + "T" + a.start_time
+						);
+						const dateB: Date = new Date(
+							b.start_date + "T" + b.start_time
+						);
 						return dateB.getTime() - dateA.getTime();
 					}
 				);
@@ -70,6 +91,8 @@ export default function Home() {
 				}
 			} catch (error) {
 				console.error("Error fetching data:", error);
+				setEvents([]);
+				setTotalEvents(0);
 			}
 		};
 
@@ -93,6 +116,24 @@ export default function Home() {
 		if (router) {
 			router.push(`/events/${eventId}`);
 		}
+	};
+
+	// Format time to 12-hour format
+	const formatTime = (timeObj: any) => {
+		if (!timeObj || !timeObj.formatted) return "";
+		return timeObj.formatted;
+	};
+
+	// Format date range
+	const formatDateRange = (startDate: string, endDate: string) => {
+		const start = new Date(startDate);
+		const end = new Date(endDate);
+
+		if (start.toDateString() === end.toDateString()) {
+			return start.toLocaleDateString();
+		}
+
+		return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
 	};
 
 	if (!isClient || isLoading) {
@@ -198,12 +239,13 @@ export default function Home() {
 								>
 									<div className="flex items-center gap-x-4 text-xs">
 										<time
-											dateTime={event.date}
+											dateTime={event.start_date}
 											className="text-slate-500 dark:text-gray-400"
 										>
-											{new Date(
-												event.date
-											).toLocaleDateString()}
+											{formatDateRange(
+												event.start_date,
+												event.end_date
+											)}
 										</time>
 									</div>
 									<div className="group relative">
@@ -216,10 +258,15 @@ export default function Home() {
 											onClick={() =>
 												handleEventClick(event.id)
 											}
-											className="text-sm font-semibold leading-6 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300"
+											className="group text-sm font-semibold leading-6 text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 transition-all duration-300 ease-in-out transform hover:translate-x-1 hover:scale-105"
 										>
 											View details{" "}
-											<span aria-hidden="true">→</span>
+											<span
+												aria-hidden="true"
+												className="inline-block transition-all duration-300 ease-in-out group-hover:translate-x-2 group-hover:scale-110"
+											>
+												→
+											</span>
 										</button>
 									</div>
 								</article>

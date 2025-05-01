@@ -1,20 +1,51 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import AuthWrapper from "../../components/AuthWrapper";
+import { useSession } from "next-auth/react";
 
 export default function CreateEvent() {
+	const { data: session } = useSession();
 	const [formData, setFormData] = useState({
 		title: "",
 		description: "",
-		date: "",
-		time: "",
+		start_date: "",
+		end_date: "",
+		start_time: "",
+		end_time: "",
 		location: "",
 		eventType: "",
+		timezone: "America/New_York", // Default timezone
 	});
 
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [errorMessage, setErrorMessage] = useState("");
 	const [successMessage, setSuccessMessage] = useState("");
+
+	// Valid event types
+	const validEventTypes = ["conference", "seminar", "talk", "workshop"];
+
+	// Fetch user settings to get timezone
+	useEffect(() => {
+		const fetchSettings = async () => {
+			if (session?.user?.id) {
+				try {
+					const response = await fetch(
+						`http://localhost:3001/settings/reminders/${session.user.id}`
+					);
+					if (response.ok) {
+						const data = await response.json();
+						setFormData((prev) => ({
+							...prev,
+							timezone: data.timezone || "America/New_York",
+						}));
+					}
+				} catch (error) {
+					console.error("Error fetching settings:", error);
+				}
+			}
+		};
+		fetchSettings();
+	}, [session?.user?.id]);
 
 	// Handle form field change
 	const handleInputChange = (
@@ -36,24 +67,61 @@ export default function CreateEvent() {
 		setErrorMessage("");
 		setSuccessMessage("");
 
-		// Combine date and time fields into a single ISO string
-		const formattedDateTime = `${formData.date}T${formData.time}`;
+		console.log("Session:", session);
+		console.log("Access Token:", session?.user?.accessToken);
 
-		const eventTypeLowerCase = formData.eventType.toLowerCase();
+		if (!session?.user?.accessToken) {
+			setErrorMessage("You must be logged in to create an event");
+			setIsSubmitting(false);
+			return;
+		}
+
+		// Validate event type
+		if (!validEventTypes.includes(formData.eventType.toLowerCase())) {
+			setErrorMessage("Please select a valid event type.");
+			setIsSubmitting(false);
+			return;
+		}
+
+		// Validate dates and times
+		if (formData.end_date < formData.start_date) {
+			setErrorMessage("End date cannot be before start date.");
+			setIsSubmitting(false);
+			return;
+		}
+
+		if (
+			formData.end_date === formData.start_date &&
+			formData.end_time <= formData.start_time
+		) {
+			setErrorMessage(
+				"End time must be after start time for same-day events."
+			);
+			setIsSubmitting(false);
+			return;
+		}
 
 		const updatedFormData = {
-			...formData,
-			eventType: eventTypeLowerCase,
-			date: formattedDateTime, // Combine date and time here
+			title: formData.title,
+			description: formData.description,
+			start_date: formData.start_date,
+			end_date: formData.end_date,
+			start_time: formData.start_time,
+			end_time: formData.end_time,
+			location: formData.location,
+			type: formData.eventType.toLowerCase(),
+			timezone: formData.timezone,
 		};
 
 		// Simple form validation
 		if (
 			!formData.title ||
-			!formData.date ||
+			!formData.start_date ||
+			!formData.end_date ||
+			!formData.start_time ||
+			!formData.end_time ||
 			!formData.location ||
-			!formData.eventType ||
-			!formData.time
+			!formData.eventType
 		) {
 			setErrorMessage("Please fill in all required fields.");
 			setIsSubmitting(false);
@@ -63,37 +131,31 @@ export default function CreateEvent() {
 		console.log("Form Data being sent:", updatedFormData);
 
 		try {
-			// Conditionally set the endpoint based on event type
-			let url = "http://localhost:3001/conferences"; // Default to conferences
-			if (updatedFormData.eventType === "workshop") {
-				url = "http://localhost:3001/workshops"; // Example URL for workshops
-			} else if (updatedFormData.eventType === "seminar") {
-				url = "http://localhost:3001/seminars"; // Example URL for seminars
-			} else if (updatedFormData.eventType === "talk") {
-				url = "http://localhost:3001/talks"; // Example URL for talks
-			}
-
-			// Send data to the correct endpoint
-			const response = await fetch(url, {
+			const response = await fetch("http://localhost:3001/events", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
+					Authorization: `Bearer ${session.user.accessToken}`,
 				},
 				body: JSON.stringify(updatedFormData),
 			});
 
 			if (!response.ok) {
-				throw new Error("Failed to create event");
+				const errorData = await response.json();
+				throw new Error(errorData.error || "Failed to create event");
 			}
 
 			setSuccessMessage("Event created successfully!");
 			setFormData({
 				title: "",
 				description: "",
-				date: "",
-				time: "",
+				start_date: "",
+				end_date: "",
+				start_time: "",
+				end_time: "",
 				location: "",
 				eventType: "",
+				timezone: "America/New_York", // Default timezone
 			});
 		} catch (error: unknown) {
 			if (error instanceof Error) {
@@ -189,13 +251,13 @@ export default function CreateEvent() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
 								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
-									Event Date{" "}
+									Start Date{" "}
 									<span className="text-rose-500">*</span>
 								</label>
 								<input
 									type="date"
-									name="date"
-									value={formData.date}
+									name="start_date"
+									value={formData.start_date}
 									onChange={handleInputChange}
 									required
 									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
@@ -204,13 +266,46 @@ export default function CreateEvent() {
 
 							<div>
 								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
-									Event Time{" "}
+									End Date{" "}
+									<span className="text-rose-500">*</span>
+								</label>
+								<input
+									type="date"
+									name="end_date"
+									value={formData.end_date}
+									onChange={handleInputChange}
+									required
+									min={formData.start_date}
+									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+								/>
+							</div>
+						</div>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							<div>
+								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+									Start Time{" "}
 									<span className="text-rose-500">*</span>
 								</label>
 								<input
 									type="time"
-									name="time"
-									value={formData.time}
+									name="start_time"
+									value={formData.start_time}
+									onChange={handleInputChange}
+									required
+									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+									End Time{" "}
+									<span className="text-rose-500">*</span>
+								</label>
+								<input
+									type="time"
+									name="end_time"
+									value={formData.end_time}
 									onChange={handleInputChange}
 									required
 									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"

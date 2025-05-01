@@ -19,5 +19,11 @@ export default withAuth(
 
 // Specify which routes should be protected
 export const config = {
-	matcher: ["/events/:path*", "/profile/:path*", "/conferences/:path*", "/", "/subscribed-events/:path*", "/subscribed-events"],
+	matcher: [
+		"/events/:path*",
+		"/profile/:path*",
+		"/",
+		"/subscribed-events/:path*",
+		"/subscribed-events",
+	],
 };

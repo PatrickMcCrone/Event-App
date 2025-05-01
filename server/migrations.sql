@@ -15,4 +15,18 @@ CREATE TABLE IF NOT EXISTS notifications (
     message TEXT NOT NULL,
     read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-); 
+);
+
+-- Add timezone column to events table if it doesn't exist
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'events' 
+        AND column_name = 'timezone'
+    ) THEN
+        ALTER TABLE events 
+        ADD COLUMN timezone VARCHAR(50) NOT NULL DEFAULT 'America/New_York';
+    END IF;
+END $$; 

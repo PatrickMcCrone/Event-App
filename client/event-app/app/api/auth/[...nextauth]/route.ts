@@ -1,5 +1,8 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { Account, Profile, User } from "next-auth";
+import { JWT } from "next-auth/jwt";
+import { Session } from "next-auth";
 
 // Define the session type to include the user ID, Google ID, and admin status
 declare module "next-auth" {
@@ -7,6 +10,7 @@ declare module "next-auth" {
 		id?: string;
 		googleId?: string;
 		admin?: boolean;
+		accessToken?: string;
 	}
 
 	interface Session {
@@ -17,6 +21,7 @@ declare module "next-auth" {
 			image?: string | null;
 			googleId?: string;
 			admin?: boolean;
+			accessToken?: string;
 		};
 	}
 }
@@ -36,7 +41,15 @@ export const authOptions = {
 		}),
 	],
 	callbacks: {
-		async signIn({ user, account, profile }) {
+		async signIn({
+			user,
+			account,
+			profile,
+		}: {
+			user: User;
+			account: Account | null;
+			profile?: Profile;
+		}) {
 			if (account?.provider === "google") {
 				try {
 					console.log("Google sign in attempt:", {
@@ -89,6 +102,7 @@ export const authOptions = {
 					user.id = userData.id;
 					user.googleId = profile?.sub;
 					user.admin = userData.admin;
+					user.accessToken = userData.token;
 
 					return true;
 				} catch (error) {
@@ -98,22 +112,36 @@ export const authOptions = {
 			}
 			return true;
 		},
-		async jwt({ token, user }) {
+		async jwt({
+			token,
+			user,
+			account,
+		}: {
+			token: JWT;
+			user?: User;
+			account?: Account | null;
+		}) {
 			if (user) {
 				token.id = user.id;
 				token.googleId = user.googleId;
 				if (user?.admin !== undefined) {
 					token.admin = user.admin;
 				}
+				if (user?.accessToken) {
+					token.accessToken = user.accessToken;
+				}
 			}
 			return token;
 		},
-		async session({ session, token }) {
+		async session({ session, token }: { session: Session; token: JWT }) {
 			if (token && session.user) {
 				session.user.id = token.id as string;
 				session.user.googleId = token.googleId as string;
 				if (token.admin !== undefined) {
 					session.user.admin = token.admin as boolean;
+				}
+				if (token.accessToken) {
+					session.user.accessToken = token.accessToken as string;
 				}
 			}
 			return session;
