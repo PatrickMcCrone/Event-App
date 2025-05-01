@@ -1,8 +1,14 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-// Define the session type to include the user ID and Google ID
+// Define the session type to include the user ID, Google ID, and admin status
 declare module "next-auth" {
+	interface User {
+		id?: string;
+		googleId?: string;
+		admin?: boolean;
+	}
+
 	interface Session {
 		user: {
 			id?: string;
@@ -10,11 +16,12 @@ declare module "next-auth" {
 			email?: string | null;
 			image?: string | null;
 			googleId?: string;
+			admin?: boolean;
 		};
 	}
 }
 
-const handler = NextAuth({
+export const authOptions = {
 	providers: [
 		GoogleProvider({
 			clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
@@ -81,6 +88,8 @@ const handler = NextAuth({
 					// Store both the database ID and Google ID
 					user.id = userData.id;
 					user.googleId = profile?.sub;
+					user.admin = userData.admin;
+
 					return true;
 				} catch (error) {
 					console.error("Error during Google sign in:", error);
@@ -93,6 +102,9 @@ const handler = NextAuth({
 			if (user) {
 				token.id = user.id;
 				token.googleId = user.googleId;
+				if (user?.admin !== undefined) {
+					token.admin = user.admin;
+				}
 			}
 			return token;
 		},
@@ -100,6 +112,9 @@ const handler = NextAuth({
 			if (token && session.user) {
 				session.user.id = token.id as string;
 				session.user.googleId = token.googleId as string;
+				if (token.admin !== undefined) {
+					session.user.admin = token.admin as boolean;
+				}
 			}
 			return session;
 		},
@@ -109,6 +124,8 @@ const handler = NextAuth({
 		error: "/login", // Redirect to login page on error
 	},
 	debug: process.env.NODE_ENV === "development",
-});
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };

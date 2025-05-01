@@ -4,7 +4,13 @@ import { useRouter } from "next/navigation";
 import { useTheme } from "../context/ThemeContext";
 import { useSession } from "next-auth/react";
 import AuthWrapper from "../../components/AuthWrapper";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon } from "@heroicons/react/24/outline";
 
@@ -18,6 +24,7 @@ interface Event {
 	attendees: number;
 	status?: "upcoming" | "ongoing" | "completed";
 	isSubscribed?: boolean;
+	createdBy: string;
 }
 
 export default function Events() {
@@ -31,32 +38,38 @@ export default function Events() {
 	const [authToken, setAuthToken] = useState<string | null>(null);
 	const router = useRouter();
 	const { theme } = useTheme();
-	const { data: session } = useSession();
+	const { data: session, status } = useSession();
+	const isLoading = status === "loading";
+	const isAuthenticated = status === "authenticated";
+	const isAdmin = session?.user?.admin === true;
 
 	// Get auth token when session changes
 	useEffect(() => {
 		const getAuthToken = async () => {
 			if (session?.user) {
 				try {
-					const authResponse = await fetch('http://localhost:3001/auth/google', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							name: session.user.name,
-							email: session.user.email,
-							picture: session.user.image,
-							googleId: session.user.googleId,
-						}),
-					});
+					const authResponse = await fetch(
+						"http://localhost:3001/auth/google",
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: session.user.name,
+								email: session.user.email,
+								picture: session.user.image,
+								googleId: session.user.googleId,
+							}),
+						}
+					);
 
 					if (authResponse.ok) {
 						const authData = await authResponse.json();
 						setAuthToken(authData.token);
 					}
 				} catch (error) {
-					console.error('Error getting auth token:', error);
+					console.error("Error getting auth token:", error);
 				}
 			}
 		};
@@ -74,23 +87,30 @@ export default function Events() {
 
 			try {
 				// Fetch all events
-				const eventsResponse = await fetch('http://localhost:3001/conferences');
+				const eventsResponse = await fetch(
+					"http://localhost:3001/conferences"
+				);
 				if (!eventsResponse.ok) {
-					throw new Error('Failed to fetch events');
+					throw new Error("Failed to fetch events");
 				}
 				const eventsData = await eventsResponse.json();
 
 				// If user is logged in, fetch their subscriptions
 				let subscriptions: number[] = [];
 				if (session?.user?.id) {
-					const subsResponse = await fetch(`http://localhost:3001/users/${session.user.id}/subscriptions`, {
-						headers: {
-							'Authorization': `Bearer ${authToken}`,
-						},
-					});
+					const subsResponse = await fetch(
+						`http://localhost:3001/users/${session.user.id}/subscriptions`,
+						{
+							headers: {
+								Authorization: `Bearer ${authToken}`,
+							},
+						}
+					);
 					if (subsResponse.ok) {
 						const subsData = await subsResponse.json();
-						subscriptions = subsData.map((sub: any) => sub.conference_id);
+						subscriptions = subsData.map(
+							(sub: any) => sub.conference_id
+						);
 					}
 				}
 
@@ -104,8 +124,12 @@ export default function Events() {
 				setEvents(eventsWithStatus);
 				setError(null);
 			} catch (error) {
-				console.error('Error fetching events:', error);
-				setError(error instanceof Error ? error.message : 'Failed to fetch events');
+				console.error("Error fetching events:", error);
+				setError(
+					error instanceof Error
+						? error.message
+						: "Failed to fetch events"
+				);
 			} finally {
 				setLoading(false);
 			}
@@ -146,24 +170,31 @@ export default function Events() {
 		if (!session?.user?.id || !authToken) return;
 
 		try {
-			const response = await fetch(`http://localhost:3001/conferences/${eventId}/subscribe`, {
-				method: 'POST',
-				headers: {
-					'Authorization': `Bearer ${authToken}`,
-					'Content-Type': 'application/json',
-				},
-			});
+			const response = await fetch(
+				`http://localhost:3001/conferences/${eventId}/subscribe`,
+				{
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						"Content-Type": "application/json",
+					},
+				}
+			);
 
 			if (!response.ok) {
-				throw new Error('Failed to subscribe');
+				throw new Error("Failed to subscribe");
 			}
 
 			// Update local state
-			setEvents(events.map(event => 
-				event.id === eventId ? { ...event, isSubscribed: true } : event
-			));
+			setEvents(
+				events.map((event) =>
+					event.id === eventId
+						? { ...event, isSubscribed: true }
+						: event
+				)
+			);
 		} catch (error) {
-			console.error('Error subscribing:', error);
+			console.error("Error subscribing:", error);
 		}
 	};
 
@@ -171,24 +202,31 @@ export default function Events() {
 		if (!session?.user?.id || !authToken) return;
 
 		try {
-			const response = await fetch(`http://localhost:3001/conferences/${eventId}/subscribe`, {
-				method: 'DELETE',
-				headers: {
-					'Authorization': `Bearer ${authToken}`,
-					'Content-Type': 'application/json',
-				},
-			});
+			const response = await fetch(
+				`http://localhost:3001/conferences/${eventId}/subscribe`,
+				{
+					method: "DELETE",
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						"Content-Type": "application/json",
+					},
+				}
+			);
 
 			if (!response.ok) {
-				throw new Error('Failed to unsubscribe');
+				throw new Error("Failed to unsubscribe");
 			}
 
 			// Update local state
-			setEvents(events.map(event => 
-				event.id === eventId ? { ...event, isSubscribed: false } : event
-			));
+			setEvents(
+				events.map((event) =>
+					event.id === eventId
+						? { ...event, isSubscribed: false }
+						: event
+				)
+			);
 		} catch (error) {
-			console.error('Error unsubscribing:', error);
+			console.error("Error unsubscribing:", error);
 		}
 	};
 
@@ -306,7 +344,9 @@ export default function Events() {
 									</p>
 									<div className="flex items-center justify-between text-sm">
 										<span className="text-slate-500 dark:text-gray-400">
-											{new Date(event.date).toLocaleDateString()}
+											{new Date(
+												event.date
+											).toLocaleDateString()}
 										</span>
 									</div>
 								</div>
@@ -314,7 +354,9 @@ export default function Events() {
 									<button
 										onClick={(e) => {
 											e.stopPropagation();
-											event.isSubscribed ? handleUnsubscribe(event.id) : handleSubscribe(event.id);
+											event.isSubscribed
+												? handleUnsubscribe(event.id)
+												: handleSubscribe(event.id);
 										}}
 										className={`absolute bottom-4 right-4 p-2 rounded-md transition-colors duration-200 ${
 											event.isSubscribed
@@ -323,12 +365,30 @@ export default function Events() {
 										}`}
 									>
 										{event.isSubscribed ? (
-											<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-												<path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												className="h-5 w-5"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+											>
+												<path
+													fillRule="evenodd"
+													d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+													clipRule="evenodd"
+												/>
 											</svg>
 										) : (
-											<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-												<path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+											<svg
+												xmlns="http://www.w3.org/2000/svg"
+												className="h-5 w-5"
+												viewBox="0 0 20 20"
+												fill="currentColor"
+											>
+												<path
+													fillRule="evenodd"
+													d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+													clipRule="evenodd"
+												/>
 											</svg>
 										)}
 									</button>

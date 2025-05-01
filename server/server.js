@@ -366,55 +366,42 @@ app.post("/auth/login", async (req, res) => {
 	}
 });
 
-// Google authentication endpoint
+// Google OAuth callback
 app.post("/auth/google", async (req, res) => {
+	const { name, email, picture, googleId } = req.body;
 	const client = await pool.connect();
+
 	try {
-		const { name, email, picture, googleId } = req.body;
-		console.log("Received Google auth request:", {
-			name,
-			email,
-			picture,
-			googleId,
-		});
-
-		if (!email || !googleId) {
-			console.log("Missing required fields:", { email, googleId });
-			return res
-				.status(400)
-				.json({ error: "Email and Google ID are required" });
-		}
-
 		// Check if user exists
-		let result = await client.query(
-			"SELECT * FROM users WHERE google_id = $1 OR email = $2",
-			[googleId, email]
+		let userResult = await client.query(
+			"SELECT * FROM users WHERE email = $1",
+			[email]
 		);
 
 		let user;
-		if (result.rows.length === 0) {
-			console.log("Creating new user with Google ID:", googleId);
+		if (userResult.rows.length === 0) {
 			// Create new user
-			result = await client.query(
-				"INSERT INTO users (name, email, picture, google_id) VALUES ($1, $2, $3, $4) RETURNING *",
-				[name, email, picture, googleId]
+			const adminEmails = process.env.ADMIN_EMAILS?.split(",") || [];
+			const isAdmin = adminEmails.includes(email);
+
+			userResult = await client.query(
+				"INSERT INTO users (name, email, picture, google_id, admin) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+				[name, email, picture, googleId, isAdmin]
 			);
-			user = result.rows[0];
+			user = userResult.rows[0];
 		} else {
-			console.log("Updating existing user with Google ID:", googleId);
-			// Update existing user
-			user = result.rows[0];
-			await client.query(
-				"UPDATE users SET name = $1, picture = $2, google_id = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4",
-				[name, picture, googleId, user.id]
-			);
+			user = userResult.rows[0];
 		}
 
-		// Create JWT token
+		// Generate JWT token
 		const token = jwt.sign(
-			{ id: user.id, email: user.email },
+			{
+				id: user.id,
+				email: user.email,
+				admin: user.admin,
+			},
 			process.env.JWT_SECRET,
-			{ expiresIn: "24h" }
+			{ expiresIn: "1d" }
 		);
 
 		res.json({
@@ -422,11 +409,12 @@ app.post("/auth/google", async (req, res) => {
 			name: user.name,
 			email: user.email,
 			picture: user.picture,
+			admin: user.admin,
 			token,
 		});
 	} catch (error) {
-		console.error("Error in Google authentication:", error);
-		res.status(500).json({ error: "Authentication failed" });
+		console.error("Error in Google auth:", error);
+		res.status(500).json({ error: "Internal Server Error" });
 	} finally {
 		client.release();
 	}
@@ -530,10 +518,12 @@ app.get("/users/:id/subscriptions", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
 		const userId = req.user.id;
-		
+
 		// Verify the requested user ID matches the authenticated user
 		if (userId !== parseInt(req.params.id)) {
-			return res.status(403).json({ error: "Not authorized to view these subscriptions" });
+			return res
+				.status(403)
+				.json({ error: "Not authorized to view these subscriptions" });
 		}
 
 		const result = await client.query(
@@ -552,6 +542,32 @@ app.get("/users/:id/subscriptions", verifyJWT, async (req, res) => {
 		client.release();
 	}
 });
+
+// Initialize database tables
+async function initializeDatabase() {
+	const client = await pool.connect();
+	try {
+		// Create users table
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS users (
+				id SERIAL PRIMARY KEY,
+				name VARCHAR(255),
+				email VARCHAR(255) UNIQUE NOT NULL,
+				picture VARCHAR(255),
+				google_id VARCHAR(255) UNIQUE,
+				role VARCHAR(50) DEFAULT 'user',
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		`);
+
+		// ... rest of the initialization code ...
+	} catch (error) {
+		console.error("Error initializing database:", error);
+	} finally {
+		client.release();
+	}
+}
 
 app.listen(PORT, () => {
 	console.log(`Server is running on port ${PORT}`);

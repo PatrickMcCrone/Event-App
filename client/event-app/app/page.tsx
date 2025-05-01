@@ -21,6 +21,7 @@ export default function Home() {
 	const { data: session, status } = useSession();
 	const isLoading = status === "loading";
 	const isAuthenticated = status === "authenticated";
+	const isAdmin = session?.user?.admin === true;
 
 	// Use useEffect to ensure that the router is only used on the client
 	useEffect(() => {
@@ -119,12 +120,14 @@ export default function Home() {
 						</p>
 						<div className="mt-10 flex items-center justify-center gap-x-6">
 							{isAuthenticated ? (
-								<button
-									onClick={handleCreateEventClick}
-									className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
-								>
-									Create New Event
-								</button>
+								isAdmin ? (
+									<button
+										onClick={handleCreateEventClick}
+										className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
+									>
+										Create New Event
+									</button>
+								) : null
 							) : (
 								<button
 									onClick={() => router.push("/login")}
