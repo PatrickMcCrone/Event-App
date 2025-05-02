@@ -156,7 +156,12 @@ export default function Events() {
 				// Combine events with subscription status
 				const eventsWithStatus = eventsData.map((event: Event) => ({
 					...event,
-					status: getEventStatus(event.start_date, event.end_date),
+					status: getEventStatus(
+						event.start_date,
+						event.end_date,
+						event.start_time,
+						event.end_time
+					),
 					isSubscribed: subscriptions.includes(event.id),
 				}));
 
@@ -179,30 +184,49 @@ export default function Events() {
 
 	const getEventStatus = (
 		startDate: string,
-		endDate: string
+		endDate: string,
+		startTime: any,
+		endTime: any
 	): "upcoming" | "ongoing" | "completed" => {
 		const now = new Date();
-		const eventStartDate = new Date(startDate);
-		const eventEndDate = new Date(endDate);
 
-		// Set time to start of day for date-only comparison
-		const startOfDay = new Date(now);
-		startOfDay.setHours(0, 0, 0, 0);
+		// Create date objects with time
+		const eventStart = new Date(startDate);
+		let startHours, startMinutes;
 
-		const eventStartOfDay = new Date(eventStartDate);
-		eventStartOfDay.setHours(0, 0, 0, 0);
+		if (typeof startTime === "string") {
+			[startHours, startMinutes] = startTime.split(":").map(Number);
+		} else {
+			startHours = startTime.hours;
+			startMinutes = startTime.minutes;
+		}
+		eventStart.setHours(startHours, startMinutes, 0, 0);
 
-		const eventEndOfDay = new Date(eventEndDate);
-		eventEndOfDay.setHours(23, 59, 59, 999);
+		const eventEnd = new Date(endDate);
+		let endHours, endMinutes;
 
-		if (now > eventEndOfDay) return "completed";
-		if (now >= eventStartOfDay && now <= eventEndOfDay) return "ongoing";
+		if (typeof endTime === "string") {
+			[endHours, endMinutes] = endTime.split(":").map(Number);
+		} else {
+			endHours = endTime.hours;
+			endMinutes = endTime.minutes;
+		}
+		eventEnd.setHours(endHours, endMinutes, 0, 0);
+
+		if (now > eventEnd) return "completed";
+		if (now >= eventStart && now <= eventEnd) return "ongoing";
 		return "upcoming";
 	};
 
 	const filteredEvents = events.filter((event) => {
 		if (filter === "all") return true;
-		return event.status === filter;
+		const status = getEventStatus(
+			event.start_date,
+			event.end_date,
+			event.start_time,
+			event.end_time
+		);
+		return status === filter;
 	});
 
 	const sortedEvents = filteredEvents.sort((a, b) => {

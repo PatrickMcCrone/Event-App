@@ -6,6 +6,7 @@ const PORT = 3001;
 const { Pool } = require("pg");
 const jwt = require("jsonwebtoken");
 const fetch = require("node-fetch");
+const resend = require("resend");
 
 // Configure CORS
 app.use(
@@ -110,8 +111,8 @@ app.get("/events", async (req, res) => {
 		req.query.timezone === "EST"
 			? "America/New_York"
 			: req.query.timezone === "CST"
-			? "America/Chicago"
-			: req.query.timezone || "America/New_York";
+				? "America/Chicago"
+				: req.query.timezone || "America/New_York";
 
 	try {
 		const result = await client.query(`
@@ -222,16 +223,17 @@ app.get("/events", async (req, res) => {
 					});
 
 					let status = "upcoming";
-					if (now > new Date(event.end_date + "T" + event.end_time))
+					const now = new Date();
+
+					// Use the timezone-aware date objects we created
+					if (now > endResult.date) {
 						status = "completed";
-					else if (
-						now >=
-							new Date(
-								event.start_date + "T" + event.start_time
-							) &&
-						now <= new Date(event.end_date + "T" + event.end_time)
-					)
+					} else if (
+						now >= startResult.date &&
+						now <= endResult.date
+					) {
 						status = "ongoing";
+					}
 
 					// Get participants count
 					const participantsResult = await client.query(
@@ -409,13 +411,14 @@ app.get("/events/:id", async (req, res) => {
 			console.log("Converted times:", { userStartTime, userEndTime });
 
 			let status = "upcoming";
-			if (now > new Date(event.end_date + "T" + event.end_time))
+			const now = new Date();
+
+			// Use the timezone-aware date objects we created
+			if (now > endResult.date) {
 				status = "completed";
-			else if (
-				now >= new Date(event.start_date + "T" + event.start_time) &&
-				now <= new Date(event.end_date + "T" + event.end_time)
-			)
+			} else if (now >= startResult.date && now <= endResult.date) {
 				status = "ongoing";
+			}
 
 			// Get participants count and list
 			const participantsResult = await client.query(

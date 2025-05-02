@@ -159,30 +159,69 @@ export default function Home() {
 							ease. Your one-stop platform for academic event
 							management.
 						</p>
-						<div className="mt-10 flex items-center justify-center gap-x-6">
-							{isAuthenticated ? (
-								isAdmin ? (
+						<div className="mt-10 flex flex-col items-center justify-center gap-y-4 gap-x-6">
+							<div className="flex gap-x-6">
+								{isAuthenticated ? (
+									isAdmin ? (
+										<button
+											onClick={handleCreateEventClick}
+											className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
+										>
+											Create New Event
+										</button>
+									) : null
+								) : (
 									<button
-										onClick={handleCreateEventClick}
+										onClick={() => router.push("/login")}
 										className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
 									>
-										Create New Event
+										Sign In
 									</button>
-								) : null
-							) : (
+								)}
 								<button
-									onClick={() => router.push("/login")}
-									className="rounded-md bg-white px-6 py-3 text-sm font-semibold text-indigo-600 shadow-sm hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
+									onClick={handleBrowseEventsClick}
+									className="rounded-md bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
 								>
-									Sign In
+									Browse Events
 								</button>
+							</div>
+							{!isAdmin && isAuthenticated && (
+								<div className="flex flex-col items-center justify-center mt-6 gap-2">
+									<span className="text-slate-200 dark:text-indigo-100 text-base font-medium">
+										Need the ability to create events?
+									</span>
+									<button
+										onClick={() =>
+											router.push("/admin-application")
+										}
+										className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg px-6 py-3 font-semibold transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+									>
+										Apply for Admin status here
+										<svg
+											className="ml-1 w-5 h-5 transition-all duration-300 ease-in-out"
+											fill="none"
+											stroke="currentColor"
+											strokeWidth="2"
+											viewBox="0 0 24 24"
+										>
+											<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+											<circle cx="9" cy="7" r="4" />
+											<line
+												x1="19"
+												y1="8"
+												x2="19"
+												y2="14"
+											/>
+											<line
+												x1="22"
+												y1="11"
+												x2="16"
+												y2="11"
+											/>
+										</svg>
+									</button>
+								</div>
 							)}
-							<button
-								onClick={handleBrowseEventsClick}
-								className="rounded-md bg-indigo-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500 transition-all duration-200 hover:-translate-y-1 hover:scale-105 active:translate-y-0 active:scale-95"
-							>
-								Browse Events
-							</button>
 						</div>
 					</div>
 				</div>

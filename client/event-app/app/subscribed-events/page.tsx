@@ -41,24 +41,23 @@ export default function SubscribedEvents() {
 
 	const getEventStatus = (
 		startDate: string,
-		endDate: string
+		endDate: string,
+		startTime: string,
+		endTime: string
 	): "upcoming" | "ongoing" | "completed" => {
 		const now = new Date();
-		const eventStartDate = new Date(startDate);
-		const eventEndDate = new Date(endDate);
 
-		// Set time to start of day for date-only comparison
-		const startOfDay = new Date(now);
-		startOfDay.setHours(0, 0, 0, 0);
+		// Create date objects with time
+		const eventStart = new Date(startDate);
+		const [startHours, startMinutes] = startTime.split(":").map(Number);
+		eventStart.setHours(startHours, startMinutes, 0, 0);
 
-		const eventStartOfDay = new Date(eventStartDate);
-		eventStartOfDay.setHours(0, 0, 0, 0);
+		const eventEnd = new Date(endDate);
+		const [endHours, endMinutes] = endTime.split(":").map(Number);
+		eventEnd.setHours(endHours, endMinutes, 0, 0);
 
-		const eventEndOfDay = new Date(eventEndDate);
-		eventEndOfDay.setHours(23, 59, 59, 999);
-
-		if (now > eventEndOfDay) return "completed";
-		if (now >= eventStartOfDay && now <= eventEndOfDay) return "ongoing";
+		if (now > eventEnd) return "completed";
+		if (now >= eventStart && now <= eventEnd) return "ongoing";
 		return "upcoming";
 	};
 
@@ -146,7 +145,12 @@ export default function SubscribedEvents() {
 					start_time: sub.start_time,
 					end_time: sub.end_time,
 					location: sub.location,
-					status: getEventStatus(sub.start_date, sub.end_date),
+					status: getEventStatus(
+						sub.start_date,
+						sub.end_date,
+						sub.start_time,
+						sub.end_time
+					),
 				}));
 
 				setSubscribedEvents(events);
@@ -198,32 +202,16 @@ export default function SubscribedEvents() {
 		router.push(`/events/${eventId}`);
 	};
 
-	const filteredEvents = subscribedEvents
-		.filter((event) => {
-			if (filter === "all") return true;
-			return event.status === filter;
-		})
-		.sort((a, b) => {
-			// First sort by status priority
-			const statusPriority: Record<string, number> = {
-				ongoing: 0,
-				upcoming: 1,
-				completed: 2,
-			};
-
-			// Ensure we have valid status values
-			const statusA = a.status || "completed";
-			const statusB = b.status || "completed";
-
-			const statusDiff =
-				statusPriority[statusA] - statusPriority[statusB];
-			if (statusDiff !== 0) return statusDiff;
-
-			// If same status, sort by start date (most recent first)
-			const dateA = new Date(a.start_date);
-			const dateB = new Date(b.start_date);
-			return dateB.getTime() - dateA.getTime();
-		});
+	const filteredEvents = subscribedEvents.filter((event) => {
+		if (filter === "all") return true;
+		const status = getEventStatus(
+			event.start_date,
+			event.end_date,
+			event.start_time,
+			event.end_time
+		);
+		return status === filter;
+	});
 
 	if (loading) {
 		return (
