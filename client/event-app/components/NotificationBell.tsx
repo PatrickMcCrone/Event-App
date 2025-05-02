@@ -17,33 +17,72 @@ interface Notification {
 export default function NotificationBell() {
 	const [notifications, setNotifications] = useState<Notification[]>([]);
 	const [isOpen, setIsOpen] = useState(false);
+	const [authToken, setAuthToken] = useState<string | null>(null);
 	const { data: session } = useSession();
 
+	// Get auth token when session changes
 	useEffect(() => {
-		if (session?.user) {
-			fetchNotifications();
-		}
+		const getAuthToken = async () => {
+			if (session?.user) {
+				try {
+					const authResponse = await fetch(
+						"http://localhost:3001/auth/google",
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({
+								name: session.user.name,
+								email: session.user.email,
+								picture: session.user.image,
+								googleId: session.user.googleId,
+							}),
+						}
+					);
+
+					if (authResponse.ok) {
+						const authData = await authResponse.json();
+						setAuthToken(authData.token);
+					}
+				} catch (error) {
+					console.error("Error getting auth token:", error);
+				}
+			}
+		};
+
+		getAuthToken();
 	}, [session]);
 
 	const fetchNotifications = async () => {
+		if (!authToken) return;
+
 		try {
 			const response = await fetch(
 				"http://localhost:3001/notifications",
 				{
-					credentials: "include",
 					headers: {
-						"Content-Type": "application/json",
+						Authorization: `Bearer ${authToken}`,
 					},
 				}
 			);
-			if (response.ok) {
-				const data = await response.json();
-				setNotifications(data);
+
+			if (!response.ok) {
+				throw new Error("Failed to fetch notifications");
 			}
+
+			const data = await response.json();
+			setNotifications(data);
 		} catch (error) {
 			console.error("Error fetching notifications:", error);
 		}
 	};
+
+	useEffect(() => {
+		if (authToken) {
+			fetchNotifications();
+		}
+	}, [authToken]);
 
 	const markAsRead = async (id: number) => {
 		try {

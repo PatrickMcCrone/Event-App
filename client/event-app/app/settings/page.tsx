@@ -16,7 +16,7 @@ export default function Settings() {
 	const [settings, setSettings] = useState<Settings>({
 		emailNotifications: true,
 		eventReminders: true,
-		timezone: "UTC",
+		timezone: "America/New_York",
 	});
 
 	const [isSaving, setIsSaving] = useState(false);
@@ -25,16 +25,32 @@ export default function Settings() {
 	);
 	const [isLoading, setIsLoading] = useState(true);
 
+	// Timezone mappings
+	const timezoneMap: { [key: string]: string } = {
+		EST: "America/New_York",
+		CST: "America/Chicago",
+		MST: "America/Denver",
+		PST: "America/Los_Angeles",
+	};
+
+	// Reverse timezone mapping
+	const reverseTimezoneMap: { [key: string]: string } = {
+		"America/New_York": "EST",
+		"America/Chicago": "CST",
+		"America/Denver": "MST",
+		"America/Los_Angeles": "PST",
+	};
+
 	// Fetch user settings when component mounts
 	useEffect(() => {
 		const fetchSettings = async () => {
-			// Get the Google ID from the session
-			const googleId = session?.user?.googleId;
-			if (!googleId) return;
+			// Get the user ID from the session
+			const userId = session?.user?.id;
+			if (!userId) return;
 
 			try {
 				const response = await fetch(
-					`http://localhost:3001/settings/reminders/${googleId}`
+					`http://localhost:3001/settings/reminders/${userId}`
 				);
 
 				if (response.ok) {
@@ -43,6 +59,7 @@ export default function Settings() {
 						...prev,
 						emailNotifications: data.emailNotifications,
 						eventReminders: data.eventReminders,
+						timezone: data.timezone || "America/New_York",
 					}));
 				} else {
 					console.warn("Failed to fetch settings");
@@ -67,14 +84,15 @@ export default function Settings() {
 	const handleSelectChange = (setting: keyof Settings, value: string) => {
 		setSettings((prev) => ({
 			...prev,
-			[setting]: value,
+			[setting]: timezoneMap[value] || value,
 		}));
 	};
 
 	const handleSave = async () => {
-		// Get the Google ID from the session
-		const googleId = session?.user?.googleId;
-		if (!googleId) {
+		setIsSaving(true);
+		// Get the user ID from the session
+		const userId = session?.user?.id;
+		if (!userId) {
 			setSaveStatus("error");
 			return;
 		}
@@ -92,9 +110,10 @@ export default function Settings() {
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({
-						googleId: googleId,
+						userId: userId,
 						eventReminders: settings.eventReminders,
 						emailNotifications: settings.emailNotifications,
+						timezone: settings.timezone,
 					}),
 				}
 			);
@@ -243,7 +262,10 @@ export default function Settings() {
 									Timezone
 								</label>
 								<select
-									value={settings.timezone}
+									value={
+										reverseTimezoneMap[settings.timezone] ||
+										settings.timezone
+									}
 									onChange={(e) =>
 										handleSelectChange(
 											"timezone",
@@ -252,7 +274,6 @@ export default function Settings() {
 									}
 									className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md bg-slate-50 text-slate-900 shadow-sm"
 								>
-									<option value="UTC">UTC</option>
 									<option value="EST">Eastern Time</option>
 									<option value="CST">Central Time</option>
 									<option value="MST">Mountain Time</option>

@@ -2,14 +2,23 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "./context/ThemeContext";
+import { useSession } from "next-auth/react";
 import UserProfile from "../components/UserProfile";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
-import { CalendarIcon, HomeIcon, CheckCircleIcon, PlusCircleIcon, Cog6ToothIcon } from "@heroicons/react/24/outline";
+import {
+	CalendarIcon,
+	HomeIcon,
+	CheckCircleIcon,
+	PlusCircleIcon,
+	Cog6ToothIcon,
+} from "@heroicons/react/24/outline";
 
 export default function Sidebar() {
 	const pathname = usePathname();
 	const { theme } = useTheme();
+	const { data: session } = useSession();
+	const isAdmin = session?.user?.admin === true;
 
 	const navigation = [
 		{
@@ -27,11 +36,15 @@ export default function Sidebar() {
 			href: "/subscribed-events",
 			icon: CheckCircleIcon,
 		},
-		{
-			name: "Create Event",
-			href: "/create-event",
-			icon: PlusCircleIcon,
-		},
+		...(isAdmin
+			? [
+					{
+						name: "Create Event",
+						href: "/create-event",
+						icon: PlusCircleIcon,
+					},
+			  ]
+			: []),
 		{
 			name: "Settings",
 			href: "/settings",
