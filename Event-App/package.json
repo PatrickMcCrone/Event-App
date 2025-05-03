@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "next-auth": "^4.24.11",
-    "resend": "^4.5.0"
-  }
-}
