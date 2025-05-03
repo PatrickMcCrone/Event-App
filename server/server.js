@@ -644,13 +644,28 @@ app.delete("/events/:id/subscribe", verifyJWT, async (req, res) => {
 		const { id: eventId } = req.params;
 		const userId = req.user.id;
 
+		// Start a transaction
+		await client.query("BEGIN");
+
+		// Remove from subscriptions
 		await client.query(
 			"DELETE FROM event_subscriptions WHERE user_id = $1 AND event_id = $2",
 			[userId, eventId]
 		);
 
+		// Remove from participants
+		await client.query(
+			"DELETE FROM event_participants WHERE user_id = $1 AND event_id = $2",
+			[userId, eventId]
+		);
+
+		// Commit the transaction
+		await client.query("COMMIT");
+
 		res.json({ message: "Unsubscribed successfully" });
 	} catch (error) {
+		// Rollback on error
+		await client.query("ROLLBACK");
 		console.error("Error unsubscribing:", error);
 		res.status(500).json({ error: "Failed to unsubscribe" });
 	} finally {
