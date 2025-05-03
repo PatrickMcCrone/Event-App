@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
+import AnnouncementForm from "@/components/AnnouncementForm";
+import { Button } from "@/components/ui/button";
+import { toZonedTime, format as formatTz } from "date-fns-tz";
 
 interface Event {
 	id: number;
@@ -28,15 +31,27 @@ interface Subscriber {
 	email: string;
 }
 
+interface Announcement {
+	id: number;
+	title: string;
+	message: string;
+	created_at: string;
+	author_name: string;
+	author_email: string;
+}
+
 export default function EventDetails() {
 	const params = useParams();
 	const router = useRouter();
+	const { data: session } = useSession();
 	const [event, setEvent] = useState<Event | null>(null);
 	const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
+	const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+	const [isAdmin, setIsAdmin] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const { data: session } = useSession();
 	const [settings, setSettings] = useState({ timezone: "" });
+	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
 
 	// Fetch user settings first
 	useEffect(() => {
@@ -63,64 +78,87 @@ export default function EventDetails() {
 		fetchSettings();
 	}, [session?.user?.id]);
 
-	// Fetch event details only after settings are available
 	useEffect(() => {
 		const fetchEventDetails = async () => {
-			if (!settings.timezone) {
-				return;
-			}
+			if (!session?.user?.id) return;
 
-			setLoading(true);
 			try {
-				console.log("Fetching event with timezone:", settings.timezone);
-				const response = await fetch(
-					`http://localhost:3001/events/${params.id}?timezone=${settings.timezone}`
+				// Fetch event details
+				const eventResponse = await fetch(
+					`http://localhost:3001/events/${params.id}`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.user.accessToken}`,
+						},
+					}
 				);
-				if (!response.ok) {
-					throw new Error("Event not found");
-				}
-				const data = await response.json();
-				console.log("Received event data:", {
-					start_time: data.start_time,
-					end_time: data.end_time,
-					display_timezone: data.display_timezone,
-				});
 
-				// Calculate status based on start and end dates
-				const now = new Date();
-				const startDate = new Date(data.start_date);
-				const endDate = new Date(data.end_date);
-				const status =
-					now > endDate
-						? "completed"
-						: now >= startDate && now <= endDate
-						? "ongoing"
-						: "upcoming";
-				setEvent({ ...data, status });
+				if (!eventResponse.ok) {
+					throw new Error("Failed to fetch event details");
+				}
+
+				const eventData = await eventResponse.json();
+				setEvent(eventData);
 
 				// Fetch subscribers
-				const subsResponse = await fetch(
-					`http://localhost:3001/events/${params.id}/subscribers`
+				const subscribersResponse = await fetch(
+					`http://localhost:3001/events/${params.id}/subscribers`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.user.accessToken}`,
+						},
+					}
 				);
-				if (subsResponse.ok) {
-					const subsData = await subsResponse.json();
-					setSubscribers(subsData);
+
+				if (!subscribersResponse.ok) {
+					throw new Error("Failed to fetch subscribers");
 				}
-			} catch (err) {
-				setError(
-					err instanceof Error ? err.message : "Failed to load event"
+
+				const subscribersData = await subscribersResponse.json();
+				setSubscribers(subscribersData);
+
+				// Fetch announcements
+				const announcementsResponse = await fetch(
+					`http://localhost:3001/events/${params.id}/announcements`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.user.accessToken}`,
+						},
+					}
 				);
+
+				if (!announcementsResponse.ok) {
+					throw new Error("Failed to fetch announcements");
+				}
+
+				const announcementsData = await announcementsResponse.json();
+				setAnnouncements(announcementsData);
+
+				// Check if user is admin
+				const adminResponse = await fetch(
+					`http://localhost:3001/events/${params.id}/admin`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.user.accessToken}`,
+						},
+					}
+				);
+
+				if (adminResponse.ok) {
+					setIsAdmin(true);
+				}
+			} catch (error) {
+				console.error("Error fetching event details:", error);
 			} finally {
 				setLoading(false);
 			}
 		};
 
 		fetchEventDetails();
-	}, [params.id, settings.timezone]);
+	}, [params.id, session]);
 
 	// Format time to 12-hour format
 	const formatTime = (timeObj: any) => {
-		console.log("Formatting time object:", timeObj);
 		if (!timeObj || !timeObj.formatted) return "";
 		return timeObj.formatted;
 	};
@@ -150,6 +188,58 @@ export default function EventDetails() {
 		);
 	}
 
+	const handleAnnouncementCreated = async () => {
+		// Refresh announcements
+		const response = await fetch(
+			`http://localhost:3001/events/${params.id}/announcements`,
+			{
+				headers: {
+					Authorization: `Bearer ${session?.user?.accessToken}`,
+				},
+			}
+		);
+
+		if (response.ok) {
+			const data = await response.json();
+			setAnnouncements(data);
+		}
+	};
+
+	const handleDeleteAnnouncement = async (announcementId: number) => {
+		if (
+			!window.confirm(
+				"Are you sure you want to delete this announcement?"
+			)
+		)
+			return;
+		try {
+			await fetch(
+				`http://localhost:3001/events/${event?.id}/announcements/${announcementId}`,
+				{
+					method: "DELETE",
+					headers: {
+						Authorization: `Bearer ${session?.user?.accessToken}`,
+					},
+				}
+			);
+			// Refresh announcements
+			const response = await fetch(
+				`http://localhost:3001/events/${event?.id}/announcements`,
+				{
+					headers: {
+						Authorization: `Bearer ${session?.user?.accessToken}`,
+					},
+				}
+			);
+			if (response.ok) {
+				const data = await response.json();
+				setAnnouncements(data);
+			}
+		} catch (error) {
+			alert("Failed to delete announcement.");
+		}
+	};
+
 	return (
 		<div className="min-h-screen bg-slate-50 dark:bg-gray-900 p-6">
 			{/* Header */}
@@ -163,13 +253,13 @@ export default function EventDetails() {
 							event.status === "upcoming"
 								? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
 								: event.status === "ongoing"
-								? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
-								: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
+									? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
+									: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
 						}`}
 					>
 						{event.status
 							? event.status.charAt(0).toUpperCase() +
-							  event.status.slice(1)
+								event.status.slice(1)
 							: "Unknown"}
 					</span>
 				</div>
@@ -188,6 +278,139 @@ export default function EventDetails() {
 						</p>
 					</div>
 
+					{/* Announcements Section */}
+					<div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 mb-6 border border-slate-100 dark:border-gray-700">
+						<div className="flex justify-between items-center mb-4">
+							<h2 className="text-2xl font-semibold text-slate-800 dark:text-white">
+								Announcements
+							</h2>
+							{isAdmin && (
+								<Button
+									onClick={() =>
+										setShowAnnouncementForm(
+											!showAnnouncementForm
+										)
+									}
+									className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-400 focus:outline-none text-white font-semibold px-4 py-2 rounded-lg shadow transition-all duration-150 active:scale-95 hover:scale-105 transform w-auto"
+								>
+									{!showAnnouncementForm && (
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											className="h-5 w-5"
+											fill="none"
+											viewBox="0 0 24 24"
+											stroke="currentColor"
+											strokeWidth={2}
+										>
+											<path
+												strokeLinecap="round"
+												strokeLinejoin="round"
+												d="M12 4v16m8-8H4"
+											/>
+										</svg>
+									)}
+									{showAnnouncementForm
+										? "Cancel"
+										: "New Announcement"}
+								</Button>
+							)}
+						</div>
+						{showAnnouncementForm && (
+							<AnnouncementForm
+								eventId={event.id}
+								onAnnouncementCreated={
+									handleAnnouncementCreated
+								}
+								subscribers={subscribers
+									.filter(
+										(s) => s.email !== event.creator_email
+									)
+									.map((s) => ({
+										id: s.user_id,
+										name: s.name,
+										email: s.email,
+									}))}
+							/>
+						)}
+						<div className="space-y-4 max-h-56 overflow-y-auto">
+							{announcements.length === 0 ? (
+								<p className="text-slate-500 dark:text-gray-400">
+									No announcements yet
+								</p>
+							) : (
+								announcements.map((announcement) => (
+									<div
+										key={announcement.id}
+										className="bg-slate-50 dark:bg-gray-900 rounded-lg p-4 border border-slate-200 dark:border-gray-800 relative group"
+									>
+										{isAdmin && (
+											<button
+												onClick={() =>
+													handleDeleteAnnouncement(
+														announcement.id
+													)
+												}
+												className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-all bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 z-10 shadow active:scale-90 hover:scale-110 transform"
+												title="Delete announcement"
+												aria-label="Delete announcement"
+											>
+												<svg
+													xmlns="http://www.w3.org/2000/svg"
+													className="h-4 w-4"
+													fill="none"
+													viewBox="0 0 24 24"
+													stroke="currentColor"
+													strokeWidth={2}
+												>
+													<path
+														strokeLinecap="round"
+														strokeLinejoin="round"
+														d="M6 18L18 6M6 6l12 12"
+													/>
+												</svg>
+											</button>
+										)}
+										<h3 className="font-semibold text-lg text-slate-800 dark:text-white mb-1">
+											{announcement.title}
+										</h3>
+										<p className="text-slate-700 dark:text-gray-300 mb-2">
+											{announcement.message}
+										</p>
+										<div className="text-xs text-slate-500 dark:text-gray-400 flex justify-between">
+											<span>
+												By {announcement.author_name}
+											</span>
+											<span>
+												{announcement.created_at
+													? (() => {
+															const date =
+																new Date(
+																	announcement.created_at
+																);
+															return date.toLocaleString(
+																"en-US",
+																{
+																	timeZone:
+																		settings.timezone ||
+																		"America/New_York",
+																	year: "numeric",
+																	month: "short",
+																	day: "numeric",
+																	hour: "numeric",
+																	minute: "2-digit",
+																	hour12: true,
+																}
+															);
+														})()
+													: ""}
+											</span>
+										</div>
+									</div>
+								))
+							)}
+						</div>
+					</div>
+
 					{/* Additional Information */}
 					<div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 border border-slate-100 dark:border-gray-700">
 						<h2 className="text-2xl font-semibold text-slate-800 dark:text-white mb-4">
@@ -196,7 +419,7 @@ export default function EventDetails() {
 						<div className="space-y-4">
 							<div>
 								<h3 className="text-lg font-medium text-slate-800 dark:text-white mb-2">
-									Organizer
+									Organizer(s)
 								</h3>
 								<p className="text-slate-600 dark:text-gray-400">
 									{event.creator_name}
@@ -273,6 +496,15 @@ export default function EventDetails() {
 								</h3>
 								<p className="text-slate-800 dark:text-white">
 									{event.location}
+								</p>
+							</div>
+							<div>
+								<h3 className="text-sm font-medium text-slate-500 dark:text-gray-400">
+									Status
+								</h3>
+								<p className="text-slate-800 dark:text-white">
+									{event.status.charAt(0).toUpperCase() +
+										event.status.slice(1)}
 								</p>
 							</div>
 						</div>
