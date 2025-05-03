@@ -217,11 +217,6 @@ app.get("/events", async (req, res) => {
 						rawTimezone: userTimezone,
 					};
 
-					console.log("Converted times:", {
-						userStartTime,
-						userEndTime,
-					});
-
 					let status = "upcoming";
 					const now = new Date();
 
@@ -277,8 +272,6 @@ app.get("/events/:id", async (req, res) => {
 	const { id } = req.params;
 	const client = await pool.connect();
 
-	console.log("Incoming timezone from request:", req.query.timezone);
-
 	// Map timezone abbreviations to IANA timezone names
 	const timezoneMap = {
 		EST: "America/New_York",
@@ -291,7 +284,6 @@ app.get("/events/:id", async (req, res) => {
 		timezoneMap[req.query.timezone] ||
 		req.query.timezone ||
 		"America/New_York";
-	console.log("Normalized userTimezone:", userTimezone);
 
 	try {
 		const result = await client.query(
@@ -312,15 +304,12 @@ app.get("/events/:id", async (req, res) => {
 		}
 
 		const event = result.rows[0];
-		console.log("Original event time:", event.start_time, event.end_time);
-		console.log("Original event timezone:", event.timezone);
 
 		const now = new Date();
 
 		try {
 			// Ensure timezone is set
 			const eventTimezone = event.timezone || "America/New_York";
-			console.log("Event timezone:", eventTimezone);
 
 			// Parse the time string
 			const parseTime = (timeStr) => {
@@ -334,7 +323,6 @@ app.get("/events/:id", async (req, res) => {
 
 			const startTime = parseTime(event.start_time);
 			const endTime = parseTime(event.end_time);
-			console.log("Parsed times:", { startTime, endTime });
 
 			// Create date objects in the event's timezone
 			const createDateInTimezone = (
@@ -408,8 +396,6 @@ app.get("/events/:id", async (req, res) => {
 				rawTimezone: userTimezone,
 			};
 
-			console.log("Converted times:", { userStartTime, userEndTime });
-
 			let status = "upcoming";
 			const now = new Date();
 
@@ -447,12 +433,6 @@ app.get("/events/:id", async (req, res) => {
 					timezoneAbbreviations[userTimezone] ||
 					userTimezone.split("/")[1],
 			};
-
-			console.log("Final event object:", {
-				start_time: eventWithStatus.start_time,
-				end_time: eventWithStatus.end_time,
-				display_timezone: eventWithStatus.display_timezone,
-			});
 
 			res.json(eventWithStatus);
 		} catch (error) {
@@ -709,7 +689,16 @@ app.get("/users/:id/subscriptions", verifyJWT, async (req, res) => {
 			[userId]
 		);
 
-		res.json(result.rows);
+		// Ensure created_at is always an ISO string
+		const subscriptions = result.rows.map((s) => ({
+			...s,
+			created_at:
+				s.created_at instanceof Date
+					? s.created_at.toISOString()
+					: s.created_at,
+		}));
+
+		res.json(subscriptions);
 	} catch (error) {
 		console.error("Error fetching subscriptions:", error);
 		res.status(500).json({ error: "Failed to fetch subscriptions" });
@@ -742,18 +731,42 @@ app.get("/notifications", verifyJWT, async (req, res) => {
 				n.message,
 				n.created_at,
 				n.read,
+				n.announcement_id,
+				n.event_id AS event_id,
 				e.title as event_title,
 				e.start_date as event_date,
-				e.start_time as event_time
+				e.start_time as event_time,
+				a.title as announcement_title,
+				a.message as announcement_message,
+				u.name as announcement_author_name,
+				u.email as announcement_author_email
 			FROM notifications n
 			LEFT JOIN events e ON n.event_id = e.id
+			LEFT JOIN announcements a ON n.announcement_id = a.id
+			LEFT JOIN users u ON a.user_id = u.id
 			WHERE n.user_id = $1
 			ORDER BY n.created_at DESC
 		`,
 			[req.user.id]
 		);
 
-		res.json(result.rows);
+		console.log("Raw notification rows:", result.rows);
+
+		// Ensure created_at is always an ISO string
+		const notifications = result.rows.map((n) => ({
+			...n,
+			created_at:
+				n.created_at instanceof Date
+					? n.created_at.toISOString()
+					: n.created_at,
+			event_date:
+				n.event_date instanceof Date
+					? n.event_date.toISOString()
+					: n.event_date,
+		}));
+
+		console.log("Sending notifications:", notifications);
+		res.json(notifications);
 	} catch (error) {
 		console.error("Error fetching notifications:", error);
 		res.status(500).json({
@@ -772,10 +785,15 @@ app.put("/notifications/:id/read", verifyJWT, async (req, res) => {
 		const { id: notificationId } = req.params;
 		const userId = req.user.id;
 
-		await client.query(
-			"UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2",
+		// Update the notification directly in the database
+		const result = await client.query(
+			"UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2 RETURNING *",
 			[notificationId, userId]
 		);
+
+		if (result.rows.length === 0) {
+			return res.status(404).json({ error: "Notification not found" });
+		}
 
 		res.json({ message: "Notification marked as read" });
 	} catch (error) {
@@ -1192,95 +1210,288 @@ async function initializeDatabase() {
 			)
 		`);
 
+		// Create announcements table
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS announcements (
+				id SERIAL PRIMARY KEY,
+				event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+				user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				title VARCHAR(255) NOT NULL,
+				message TEXT NOT NULL,
+				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+			)
+		`);
+
 		// Create notifications table
 		await client.query(`
 			CREATE TABLE IF NOT EXISTS notifications (
 				id SERIAL PRIMARY KEY,
 				user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+				announcement_id INTEGER REFERENCES announcements(id) ON DELETE CASCADE,
 				message TEXT NOT NULL,
 				read BOOLEAN NOT NULL DEFAULT FALSE,
 				created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 			)
 		`);
 
-		// Migrate data from conferences to events
-		await client.query(`
-			INSERT INTO events (
-				title, 
-				description, 
-				start_date, 
-				end_date, 
-				start_time, 
-				end_time, 
-				location, 
-				type, 
-				created_by
-			)
-			SELECT 
-				title,
-				description,
-				date::date as start_date,
-				date::date as end_date,
-				time::time as start_time,
-				(time::time + interval '2 hours')::time as end_time,
-				location,
-				'conference' as type,
-				NULL as created_by
-			FROM conferences
-			WHERE NOT EXISTS (
-				SELECT 1 FROM events e 
-				WHERE e.title = conferences.title 
-				AND e.start_date = conferences.date::date
-				AND e.start_time = conferences.time::time
-			)
-		`);
-
-		// Migrate subscriptions
-		await client.query(`
-			INSERT INTO event_subscriptions (user_id, event_id)
-			SELECT 
-				es.user_id,
-				e.id
-			FROM event_subscriptions es
-			JOIN conferences c ON es.conference_id = c.id
-			JOIN events e ON e.title = c.title 
-				AND e.start_date = c.date::date
-				AND e.start_time = c.time::time
-			WHERE NOT EXISTS (
-				SELECT 1 FROM event_subscriptions new_es
-				WHERE new_es.user_id = es.user_id
-				AND new_es.event_id = e.id
-			)
-		`);
-
-		// Migrate notifications
-		await client.query(`
-			INSERT INTO notifications (user_id, event_id, message, read, created_at)
-			SELECT 
-				n.user_id,
-				e.id,
-				n.message,
-				n.read,
-				n.created_at
-			FROM notifications n
-			JOIN conferences c ON n.conference_id = c.id
-			JOIN events e ON e.title = c.title 
-				AND e.start_date = c.date::date
-				AND e.start_time = c.time::time
-			WHERE NOT EXISTS (
-				SELECT 1 FROM notifications new_n
-				WHERE new_n.user_id = n.user_id
-				AND new_n.event_id = e.id
-				AND new_n.created_at = n.created_at
-			)
-		`);
+		// Remove old migration code for conferences table
 	} catch (error) {
 		console.error("Error initializing database:", error);
 	} finally {
 		client.release();
 	}
 }
+
+// Create announcement
+app.post("/events/:id/announcements", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const { id: eventId } = req.params;
+		const { title, message, recipientType, recipientIds } = req.body;
+		const userId = req.user.id;
+
+		// Check if user is an admin for this event
+		const adminCheck = await client.query(
+			`SELECT 1 FROM event_admins 
+			WHERE event_id = $1 AND user_id = $2`,
+			[eventId, userId]
+		);
+
+		if (adminCheck.rows.length === 0) {
+			return res.status(403).json({
+				error: "Not authorized to create announcements for this event",
+			});
+		}
+
+		// Start a transaction
+		await client.query("BEGIN");
+
+		// Create the announcement
+		const announcementResult = await client.query(
+			`INSERT INTO announcements (event_id, user_id, title, message)
+			VALUES ($1, $2, $3, $4)
+			RETURNING *`,
+			[eventId, userId, title, message]
+		);
+
+		const announcement = announcementResult.rows[0];
+
+		console.log("created_at:", announcement.created_at);
+		console.log("Date object:", new Date(announcement.created_at));
+
+		// Get all subscribers for this event
+		const subscribersResult = await client.query(
+			`SELECT user_id FROM event_subscriptions WHERE event_id = $1`,
+			[eventId]
+		);
+
+		// Determine recipients
+		let recipientUserIds;
+		if (
+			recipientType === "selected" &&
+			Array.isArray(recipientIds) &&
+			recipientIds.length > 0
+		) {
+			recipientUserIds = recipientIds
+				.map(Number)
+				.filter((id) => id !== userId);
+		} else {
+			recipientUserIds = subscribersResult.rows
+				.map((s) => s.user_id)
+				.filter((id) => id !== userId);
+		}
+
+		// Filter out any invalid/undefined/null IDs
+		recipientUserIds = recipientUserIds.filter(
+			(id) => typeof id === "number" && !isNaN(id)
+		);
+
+		// Query users table for valid IDs
+		let validRecipientUserIds = [];
+		if (recipientUserIds.length > 0) {
+			const validUsersResult = await client.query(
+				"SELECT id FROM users WHERE id = ANY($1)",
+				[recipientUserIds]
+			);
+			validRecipientUserIds = validUsersResult.rows.map((row) => row.id);
+		}
+
+		// Log for debugging
+		console.log(
+			"Valid recipient user IDs for notifications:",
+			validRecipientUserIds
+		);
+
+		// Create notifications for recipients
+		if (validRecipientUserIds.length > 0) {
+			const notificationValues = validRecipientUserIds
+				.map(
+					(uid) =>
+						`(${uid}, ${eventId}, ${announcement.id}, 'New announcement: ${title}', false, CURRENT_TIMESTAMP)`
+				)
+				.join(",");
+			await client.query(
+				`INSERT INTO notifications (user_id, event_id, announcement_id, message, read, created_at)
+				VALUES ${notificationValues}`
+			);
+		}
+
+		// Commit the transaction
+		await client.query("COMMIT");
+
+		res.status(201).json(announcement);
+	} catch (error) {
+		// Rollback on error
+		await client.query("ROLLBACK");
+		console.error("Error creating announcement:", error);
+		res.status(500).json({ error: "Failed to create announcement" });
+	} finally {
+		client.release();
+	}
+});
+
+// Get announcements for an event
+app.get("/events/:id/announcements", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const { id: eventId } = req.params;
+
+		const result = await client.query(
+			`SELECT 
+				a.*,
+				u.name as author_name,
+				u.email as author_email
+			FROM announcements a
+			JOIN users u ON a.user_id = u.id
+			WHERE a.event_id = $1
+			ORDER BY a.created_at DESC`,
+			[eventId]
+		);
+
+		// Ensure created_at is always an ISO string with UTC timezone
+		const announcements = result.rows.map((a) => {
+			const isoString =
+				a.created_at instanceof Date
+					? a.created_at.toISOString()
+					: new Date(a.created_at).toISOString();
+
+			return {
+				...a,
+				created_at: isoString,
+			};
+		});
+
+		res.json(announcements);
+	} catch (error) {
+		console.error("Error fetching announcements:", error);
+		res.status(500).json({ error: "Failed to fetch announcements" });
+	} finally {
+		client.release();
+	}
+});
+
+// Check if user is admin for an event
+app.get("/events/:id/admin", verifyJWT, async (req, res) => {
+	const { id: eventId } = req.params;
+	const userId = req.user.id;
+	const client = await pool.connect();
+	try {
+		const adminCheck = await client.query(
+			"SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2",
+			[eventId, userId]
+		);
+		if (adminCheck.rows.length > 0) {
+			res.json({ isAdmin: true });
+		} else {
+			res.status(403).json({ isAdmin: false });
+		}
+	} catch (error) {
+		res.status(500).json({ error: "Internal Server Error" });
+	} finally {
+		client.release();
+	}
+});
+
+// Delete a notification
+app.delete("/notifications/:id", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const { id } = req.params;
+		const userId = req.user.id;
+
+		const result = await client.query(
+			"DELETE FROM notifications WHERE id = $1 AND user_id = $2 RETURNING *",
+			[id, userId]
+		);
+
+		if (result.rows.length === 0) {
+			return res.status(404).json({ error: "Notification not found" });
+		}
+
+		res.json({ success: true });
+	} catch (error) {
+		console.error("Error deleting notification:", error);
+		res.status(500).json({ error: "Failed to delete notification" });
+	} finally {
+		client.release();
+	}
+});
+
+// Delete an announcement (admin only)
+app.delete(
+	"/events/:eventId/announcements/:announcementId",
+	verifyJWT,
+	async (req, res) => {
+		const client = await pool.connect();
+		try {
+			const { eventId, announcementId } = req.params;
+			const userId = req.user.id;
+
+			// Check if user is an admin for this event
+			const adminCheck = await client.query(
+				`SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2`,
+				[eventId, userId]
+			);
+			if (adminCheck.rows.length === 0) {
+				return res.status(403).json({
+					error: "Not authorized to delete announcements for this event",
+				});
+			}
+
+			// Start a transaction
+			await client.query("BEGIN");
+
+			// Delete related notifications
+			await client.query(
+				`DELETE FROM notifications WHERE announcement_id = $1`,
+				[announcementId]
+			);
+
+			// Delete the announcement
+			const result = await client.query(
+				`DELETE FROM announcements WHERE id = $1 AND event_id = $2 RETURNING *`,
+				[announcementId, eventId]
+			);
+
+			if (result.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res
+					.status(404)
+					.json({ error: "Announcement not found" });
+			}
+
+			await client.query("COMMIT");
+			res.json({ success: true });
+		} catch (error) {
+			await client.query("ROLLBACK");
+			console.error("Error deleting announcement:", error);
+			res.status(500).json({ error: "Failed to delete announcement" });
+		} finally {
+			client.release();
+		}
+	}
+);
 
 app.listen(PORT, async () => {
 	try {
@@ -1291,3 +1502,9 @@ app.listen(PORT, async () => {
 		process.exit(1);
 	}
 });
+
+const formatDate = (dateString) => {
+	if (!dateString) return "";
+	const date = new Date(dateString);
+	return isNaN(date.getTime()) ? String(dateString) : date.toLocaleString();
+};

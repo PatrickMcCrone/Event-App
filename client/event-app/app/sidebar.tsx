@@ -13,6 +13,7 @@ import {
 	PlusCircleIcon,
 	Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
+import Image from "next/image";
 
 export default function Sidebar() {
 	const pathname = usePathname();
@@ -43,7 +44,7 @@ export default function Sidebar() {
 						href: "/create-event",
 						icon: PlusCircleIcon,
 					},
-			  ]
+				]
 			: []),
 		{
 			name: "Settings",
@@ -56,9 +57,19 @@ export default function Sidebar() {
 		<div className="fixed inset-y-0 left-0 w-64 bg-white dark:bg-gray-800 shadow-lg z-50">
 			{/* Logo */}
 			<div className="flex items-center justify-center h-16 px-4 border-b border-gray-200 dark:border-gray-700">
-				<h1 className="text-xl font-bold text-gray-900 dark:text-white">
-					Event App
-				</h1>
+				<Image
+					src="/SUNY-Fredonia-logo.png"
+					alt="SUNY Fredonia Logo"
+					width={500}
+					height={120}
+					className="rounded shadow bg-white"
+					style={{
+						objectFit: "contain",
+						maxHeight: "6.5rem",
+						width: "auto",
+						maxWidth: "100%",
+					}}
+				/>
 			</div>
 
 			{/* Navigation */}
