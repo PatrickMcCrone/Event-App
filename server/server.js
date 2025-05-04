@@ -31,8 +31,8 @@ const { PGHOST, PGDATABASE, PGUSER, PGPASSWORD } = process.env;
 const pool = new Pool({
 	connectionString: process.env.DATABASE_URL,
 	ssl: {
-		rejectUnauthorized: true
-	}
+		rejectUnauthorized: true,
+	},
 });
 
 // Middleware to verify JWT token
@@ -1564,7 +1564,7 @@ app.post("/events/:id/participants", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
 		const { id: eventId } = req.params;
-		const { user_id, subscribe } = req.body;
+		const { user_id, role = "attendee", subscribe } = req.body;
 		const userId = req.user.id;
 
 		// Check if user owns the event
@@ -1575,16 +1575,18 @@ app.post("/events/:id/participants", verifyJWT, async (req, res) => {
 		if (eventResult.rows.length === 0) {
 			return res
 				.status(403)
-				.json({ error: "Not authorized to add participants to this event" });
+				.json({
+					error: "Not authorized to add participants to this event",
+				});
 		}
 
 		// Start a transaction
 		await client.query("BEGIN");
 
-		// Add participant with confirmed status
+		// Add participant with role and confirmed status
 		await client.query(
-			"INSERT INTO event_participants (event_id, user_id, status) VALUES ($1, $2, 'confirmed') ON CONFLICT (event_id, user_id) DO UPDATE SET status = 'confirmed'",
-			[eventId, user_id]
+			"INSERT INTO event_participants (event_id, user_id, status, role) VALUES ($1, $2, 'confirmed', $3) ON CONFLICT (event_id, user_id) DO UPDATE SET status = 'confirmed', role = $3",
+			[eventId, user_id, role]
 		);
 
 		// If subscribe flag is true, also subscribe the user

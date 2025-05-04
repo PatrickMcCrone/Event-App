@@ -30,6 +30,7 @@ interface Subscriber {
 	name: string;
 	email: string;
 	user_id: number;
+	role?: string;
 }
 
 interface Announcement {
@@ -41,6 +42,13 @@ interface Announcement {
 	author_email: string;
 }
 
+interface Admin {
+	id: number;
+	name: string;
+	email: string;
+	role: string;
+}
+
 export default function EventDetails() {
 	const params = useParams();
 	const router = useRouter();
@@ -48,6 +56,7 @@ export default function EventDetails() {
 	const [event, setEvent] = useState<Event | null>(null);
 	const [subscribers, setSubscribers] = useState<Subscriber[]>([]);
 	const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+	const [admins, setAdmins] = useState<Admin[]>([]);
 	const [isAdmin, setIsAdmin] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
@@ -100,6 +109,23 @@ export default function EventDetails() {
 
 				const eventData = await eventResponse.json();
 				setEvent(eventData);
+
+				// Fetch admins
+				const adminsResponse = await fetch(
+					`http://localhost:3001/events/${params.id}/admins`,
+					{
+						headers: {
+							Authorization: `Bearer ${session.user.accessToken}`,
+						},
+					}
+				);
+
+				if (!adminsResponse.ok) {
+					throw new Error("Failed to fetch admins");
+				}
+
+				const adminsData = await adminsResponse.json();
+				setAdmins(adminsData);
 
 				// Fetch subscribers
 				const subscribersResponse = await fetch(
@@ -422,9 +448,42 @@ export default function EventDetails() {
 								<h3 className="text-lg font-medium text-slate-800 dark:text-white mb-2">
 									Organizer(s)
 								</h3>
-								<p className="text-slate-600 dark:text-gray-400">
-									{event.creator_name}
-								</p>
+								<div className="space-y-2">
+									{/* Event Creator */}
+									<div className="flex items-center space-x-2">
+										<span className="text-slate-600 dark:text-gray-400">
+											{event.creator_name} (Creator)
+										</span>
+										<span className="text-slate-500 dark:text-gray-500 text-sm">
+											({event.creator_email})
+										</span>
+									</div>
+									{/* Event Admins */}
+									{admins
+										.filter(
+											(admin) =>
+												admin.email !==
+												event.creator_email
+										)
+										.map((admin) => (
+											<div
+												key={admin.id}
+												className="flex items-center space-x-2"
+											>
+												<span className="text-slate-600 dark:text-gray-400">
+													{admin.name} (
+													{admin.role
+														.charAt(0)
+														.toUpperCase() +
+														admin.role.slice(1)}
+													)
+												</span>
+												<span className="text-slate-500 dark:text-gray-500 text-sm">
+													({admin.email})
+												</span>
+											</div>
+										))}
+								</div>
 							</div>
 							<div>
 								<h3 className="text-lg font-medium text-slate-800 dark:text-white mb-2">
@@ -443,6 +502,21 @@ export default function EventDetails() {
 											>
 												<span className="text-slate-600 dark:text-gray-400">
 													{subscriber.name}
+													{subscriber.role &&
+														subscriber.role !==
+															"attendee" && (
+															<>
+																{" "}
+																(
+																{subscriber.role
+																	.charAt(0)
+																	.toUpperCase() +
+																	subscriber.role.slice(
+																		1
+																	)}
+																)
+															</>
+														)}
 												</span>
 												<span className="text-slate-500 dark:text-gray-500 text-sm">
 													({subscriber.email})
