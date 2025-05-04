@@ -11,8 +11,8 @@ interface User {
 	admin: boolean;
 }
 
-type AdminRole = 'admin' | 'chair' | '';
-type ParticipantRole = 'chair' | 'presenter' | 'attendee' | '';
+type AdminRole = "admin" | "chair" | "speaker" | "";
+type ParticipantRole = "chair" | "presenter" | "speaker" | "attendee" | "";
 
 interface FormData {
 	title: string;
@@ -49,6 +49,14 @@ export default function CreateEvent() {
 		selectedParticipants: [],
 	});
 
+	const adminRoles = ["Admin", "Chair", "Speaker"].sort();
+	const participantRoles = [
+		"Attendee",
+		"Chair",
+		"Presenter",
+		"Speaker",
+	].sort();
+
 	useEffect(() => {
 		fetchUsers();
 	}, []);
@@ -66,7 +74,9 @@ export default function CreateEvent() {
 	};
 
 	const handleInputChange = (
-		e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+		e: React.ChangeEvent<
+			HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+		>
 	) => {
 		const { name, value } = e.target;
 		setFormData((prev) => ({ ...prev, [name]: value }));
@@ -74,48 +84,59 @@ export default function CreateEvent() {
 
 	const handleAdminSelect = (userId: number, role: AdminRole) => {
 		setFormData((prev) => {
-			const existingAdmin = prev.selectedAdmins.find(a => a.userId === userId);
+			const existingAdmin = prev.selectedAdmins.find(
+				(a) => a.userId === userId
+			);
 			if (existingAdmin) {
-				if (role === '') {
+				if (role === "") {
 					return {
 						...prev,
-						selectedAdmins: prev.selectedAdmins.filter(a => a.userId !== userId)
+						selectedAdmins: prev.selectedAdmins.filter(
+							(a) => a.userId !== userId
+						),
 					};
 				}
 				return {
 					...prev,
-					selectedAdmins: prev.selectedAdmins.map(a => 
+					selectedAdmins: prev.selectedAdmins.map((a) =>
 						a.userId === userId ? { ...a, role } : a
-					)
+					),
 				};
 			}
 			return {
 				...prev,
-				selectedAdmins: [...prev.selectedAdmins, { userId, role }]
+				selectedAdmins: [...prev.selectedAdmins, { userId, role }],
 			};
 		});
 	};
 
 	const handleParticipantSelect = (userId: number, role: ParticipantRole) => {
 		setFormData((prev) => {
-			const existingParticipant = prev.selectedParticipants.find(p => p.userId === userId);
+			const existingParticipant = prev.selectedParticipants.find(
+				(p) => p.userId === userId
+			);
 			if (existingParticipant) {
-				if (role === '') {
+				if (role === "") {
 					return {
 						...prev,
-						selectedParticipants: prev.selectedParticipants.filter(p => p.userId !== userId)
+						selectedParticipants: prev.selectedParticipants.filter(
+							(p) => p.userId !== userId
+						),
 					};
 				}
 				return {
 					...prev,
-					selectedParticipants: prev.selectedParticipants.map(p => 
+					selectedParticipants: prev.selectedParticipants.map((p) =>
 						p.userId === userId ? { ...p, role } : p
-					)
+					),
 				};
 			}
 			return {
 				...prev,
-				selectedParticipants: [...prev.selectedParticipants, { userId, role }]
+				selectedParticipants: [
+					...prev.selectedParticipants,
+					{ userId, role },
+				],
 			};
 		});
 	};
@@ -133,8 +154,12 @@ export default function CreateEvent() {
 				},
 				body: JSON.stringify({
 					...formData,
-					selectedAdmins: formData.selectedAdmins.filter(a => a.role !== ''),
-					selectedParticipants: formData.selectedParticipants.filter(p => p.role !== ''),
+					selectedAdmins: formData.selectedAdmins.filter(
+						(a) => a.role !== ""
+					),
+					selectedParticipants: formData.selectedParticipants.filter(
+						(p) => p.role !== ""
+					),
 				}),
 			});
 
@@ -187,8 +212,11 @@ export default function CreateEvent() {
 									className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
 								>
 									<option value="">Select event type</option>
-									<option value="conference">Conference</option>
+									<option value="conference">
+										Conference
+									</option>
 									<option value="meeting">Meeting</option>
+									<option value="talk">Talk</option>
 									<option value="workshop">Workshop</option>
 								</select>
 							</div>
@@ -315,59 +343,139 @@ export default function CreateEvent() {
 								onChange={handleInputChange}
 								className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
 							>
-								<option value="America/New_York">Eastern Time (ET)</option>
-								<option value="America/Chicago">Central Time (CT)</option>
-								<option value="America/Denver">Mountain Time (MT)</option>
-								<option value="America/Los_Angeles">Pacific Time (PT)</option>
+								<option value="America/New_York">
+									Eastern Time (ET)
+								</option>
+								<option value="America/Chicago">
+									Central Time (CT)
+								</option>
+								<option value="America/Denver">
+									Mountain Time (MT)
+								</option>
+								<option value="America/Los_Angeles">
+									Pacific Time (PT)
+								</option>
 							</select>
 						</div>
 
 						{/* Admin Selection */}
 						<div>
-							<h2 className="text-xl font-bold mb-4">Select Admins</h2>
-							<div className="space-y-4">
-								{users.filter(user => user.admin).map((user) => (
-									<div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-										<div>
-											<h3 className="font-semibold">{user.name}</h3>
-											<p className="text-gray-600">{user.email}</p>
-										</div>
-										<select
-											className="border rounded px-2 py-1"
-											value={formData.selectedAdmins.find(a => a.userId === user.id)?.role || ''}
-											onChange={(e) => handleAdminSelect(user.id, e.target.value as AdminRole)}
+							<h2 className="text-xl font-bold mb-4">
+								Select Admins
+							</h2>
+							<div className="max-h-64 overflow-y-auto space-y-2">
+								{users
+									.filter(
+										(user) =>
+											user.admin &&
+											user.id !==
+												Number(session?.user?.id)
+									)
+									.sort((a, b) =>
+										a.name.localeCompare(b.name)
+									)
+									.map((user) => (
+										<div
+											key={user.id}
+											className="flex items-center justify-between p-2 border rounded text-sm"
 										>
-											<option value="">No role</option>
-											<option value="admin">Admin</option>
-											<option value="chair">Chair</option>
-										</select>
-									</div>
-								))}
+											<div>
+												<h3 className="font-semibold">
+													{user.name}
+												</h3>
+												<p className="text-gray-600">
+													{user.email}
+												</p>
+											</div>
+											<select
+												className="border rounded px-2 py-1 bg-slate-50 text-slate-900 dark:bg-gray-700 dark:text-white"
+												value={
+													formData.selectedAdmins.find(
+														(a) =>
+															a.userId === user.id
+													)?.role || ""
+												}
+												onChange={(e) =>
+													handleAdminSelect(
+														user.id,
+														e.target
+															.value as AdminRole
+													)
+												}
+											>
+												<option value="">
+													No role
+												</option>
+												{adminRoles.map((role) => (
+													<option
+														key={role}
+														value={role.toLowerCase()}
+													>
+														{role}
+													</option>
+												))}
+											</select>
+										</div>
+									))}
 							</div>
 						</div>
 
 						{/* Participant Selection */}
 						<div>
-							<h2 className="text-xl font-bold mb-4">Select Participants</h2>
-							<div className="space-y-4">
-								{users.filter(user => !user.admin).map((user) => (
-									<div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-										<div>
-											<h3 className="font-semibold">{user.name}</h3>
-											<p className="text-gray-600">{user.email}</p>
-										</div>
-										<select
-											className="border rounded px-2 py-1"
-											value={formData.selectedParticipants.find(p => p.userId === user.id)?.role || ''}
-											onChange={(e) => handleParticipantSelect(user.id, e.target.value as ParticipantRole)}
+							<h2 className="text-xl font-bold mb-4">
+								Select Participants
+							</h2>
+							<div className="max-h-64 overflow-y-auto space-y-2">
+								{users
+									.filter((user) => !user.admin)
+									.sort((a, b) =>
+										a.name.localeCompare(b.name)
+									)
+									.map((user) => (
+										<div
+											key={user.id}
+											className="flex items-center justify-between p-2 border rounded text-sm"
 										>
-											<option value="">No role</option>
-											<option value="chair">Chair</option>
-											<option value="presenter">Presenter</option>
-											<option value="attendee">Attendee</option>
-										</select>
-									</div>
-								))}
+											<div>
+												<h3 className="font-semibold">
+													{user.name}
+												</h3>
+												<p className="text-gray-600">
+													{user.email}
+												</p>
+											</div>
+											<select
+												className="border rounded px-2 py-1 bg-slate-50 text-slate-900 dark:bg-gray-700 dark:text-white"
+												value={
+													formData.selectedParticipants.find(
+														(p) =>
+															p.userId === user.id
+													)?.role || ""
+												}
+												onChange={(e) =>
+													handleParticipantSelect(
+														user.id,
+														e.target
+															.value as ParticipantRole
+													)
+												}
+											>
+												<option value="">
+													No role
+												</option>
+												{participantRoles.map(
+													(role) => (
+														<option
+															key={role}
+															value={role.toLowerCase()}
+														>
+															{role}
+														</option>
+													)
+												)}
+											</select>
+										</div>
+									))}
 							</div>
 						</div>
 
@@ -376,7 +484,9 @@ export default function CreateEvent() {
 								type="submit"
 								disabled={loading}
 								className={`px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium transition-colors duration-200 ${
-									loading ? "opacity-50 cursor-not-allowed" : "hover:bg-indigo-700"
+									loading
+										? "opacity-50 cursor-not-allowed"
+										: "hover:bg-indigo-700"
 								}`}
 							>
 								{loading ? (

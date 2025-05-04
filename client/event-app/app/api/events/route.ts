@@ -12,23 +12,23 @@ export async function GET() {
 			);
 		}
 
-		const response = await fetch('http://localhost:3001/events', {
+		const response = await fetch("http://localhost:3001/events", {
 			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${session.user.accessToken}`,
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${session.user.accessToken}`,
 			},
 		});
 
 		if (!response.ok) {
-			throw new Error('Failed to fetch events');
+			throw new Error("Failed to fetch events");
 		}
 
 		const data = await response.json();
 		return NextResponse.json(data);
 	} catch (error) {
-		console.error('Error fetching events:', error);
+		console.error("Error fetching events:", error);
 		return NextResponse.json(
-			{ error: 'Failed to fetch events' },
+			{ error: "Failed to fetch events" },
 			{ status: 500 }
 		);
 	}
@@ -45,26 +45,26 @@ export async function POST(request: Request) {
 		}
 
 		const body = await request.json();
-		const { 
-			title, 
-			description, 
-			start_date, 
-			end_date, 
-			start_time, 
-			end_time, 
-			location, 
-			type, 
+		const {
+			title,
+			description,
+			start_date,
+			end_date,
+			start_time,
+			end_time,
+			location,
+			type,
 			timezone,
 			selectedAdmins,
-			selectedParticipants
+			selectedParticipants,
 		} = body;
 
 		// First, create the event
-		const eventResponse = await fetch('http://localhost:3001/events', {
-			method: 'POST',
+		const eventResponse = await fetch("http://localhost:3001/events", {
+			method: "POST",
 			headers: {
-				'Content-Type': 'application/json',
-				'Authorization': `Bearer ${session.user.accessToken}`,
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${session.user.accessToken}`,
 			},
 			body: JSON.stringify({
 				title,
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
 		});
 
 		if (!eventResponse.ok) {
-			throw new Error('Failed to create event');
+			throw new Error("Failed to create event");
 		}
 
 		const event = await eventResponse.json();
@@ -89,15 +89,15 @@ export async function POST(request: Request) {
 		for (const admin of selectedAdmins) {
 			// Add as admin and subscribe in one request
 			await fetch(`http://localhost:3001/events/${event.id}/admins`, {
-				method: 'POST',
+				method: "POST",
 				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${session.user.accessToken}`,
+					"Content-Type": "application/json",
+					Authorization: `Bearer ${session.user.accessToken}`,
 				},
 				body: JSON.stringify({
 					user_id: admin.userId,
 					role: admin.role,
-					subscribe: true
+					subscribe: true,
 				}),
 			});
 		}
@@ -105,24 +105,33 @@ export async function POST(request: Request) {
 		// Finally, add participants and subscribe them
 		for (const participant of selectedParticipants) {
 			// Add as participant and subscribe in one request
-			await fetch(`http://localhost:3001/events/${event.id}/participants`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${session.user.accessToken}`,
-				},
-				body: JSON.stringify({
-					user_id: participant.userId,
-					subscribe: true
-				}),
-			});
+			await fetch(
+				`http://localhost:3001/events/${event.id}/participants`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
+					body: JSON.stringify({
+						user_id: participant.userId,
+						role: participant.role,
+						subscribe: true,
+					}),
+				}
+			);
 		}
 
 		return NextResponse.json(event);
 	} catch (error) {
-		console.error('Error creating event:', error);
+		console.error("Error creating event:", error);
 		return NextResponse.json(
-			{ error: error instanceof Error ? error.message : 'Failed to create event' },
+			{
+				error:
+					error instanceof Error
+						? error.message
+						: "Failed to create event",
+			},
 			{ status: 500 }
 		);
 	}
