@@ -29,6 +29,7 @@ interface Subscriber {
 	id: number;
 	name: string;
 	email: string;
+	user_id: number;
 }
 
 interface Announcement {

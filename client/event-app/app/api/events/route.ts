@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
-import { PrismaClient } from "@prisma/client";
 
-const prisma = new PrismaClient();
-
-// GET /api/events
 export async function GET() {
 	try {
 		const session = await getServerSession(authOptions);
@@ -16,28 +12,32 @@ export async function GET() {
 			);
 		}
 
-		// Fetch events from your database
-		const events = await prisma.event.findMany({
-			orderBy: {
-				date: "asc",
+		const response = await fetch('http://localhost:3001/events', {
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${session.user.accessToken}`,
 			},
 		});
 
-		return NextResponse.json(events);
+		if (!response.ok) {
+			throw new Error('Failed to fetch events');
+		}
+
+		const data = await response.json();
+		return NextResponse.json(data);
 	} catch (error) {
-		console.error("Error fetching events:", error);
+		console.error('Error fetching events:', error);
 		return NextResponse.json(
-			{ error: "Internal Server Error" },
+			{ error: 'Failed to fetch events' },
 			{ status: 500 }
 		);
 	}
 }
 
-// POST /api/events
 export async function POST(request: Request) {
 	try {
 		const session = await getServerSession(authOptions);
-		if (!session || !session.user.admin) {
+		if (!session) {
 			return NextResponse.json(
 				{ error: "Unauthorized" },
 				{ status: 401 }
@@ -45,24 +45,84 @@ export async function POST(request: Request) {
 		}
 
 		const body = await request.json();
-		const { title, description, date, location } = body;
+		const { 
+			title, 
+			description, 
+			start_date, 
+			end_date, 
+			start_time, 
+			end_time, 
+			location, 
+			type, 
+			timezone,
+			selectedAdmins,
+			selectedParticipants
+		} = body;
 
-		// Create event in your database
-		const event = await prisma.event.create({
-			data: {
+		// First, create the event
+		const eventResponse = await fetch('http://localhost:3001/events', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${session.user.accessToken}`,
+			},
+			body: JSON.stringify({
 				title,
 				description,
-				date: new Date(date),
+				start_date,
+				end_date,
+				start_time,
+				end_time,
 				location,
-				createdBy: session.user.email,
-			},
+				type,
+				timezone,
+			}),
 		});
+
+		if (!eventResponse.ok) {
+			throw new Error('Failed to create event');
+		}
+
+		const event = await eventResponse.json();
+
+		// Then, add admins and subscribe them
+		for (const admin of selectedAdmins) {
+			// Add as admin and subscribe in one request
+			await fetch(`http://localhost:3001/events/${event.id}/admins`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${session.user.accessToken}`,
+				},
+				body: JSON.stringify({
+					user_id: admin.userId,
+					role: admin.role,
+					subscribe: true
+				}),
+			});
+		}
+
+		// Finally, add participants and subscribe them
+		for (const participant of selectedParticipants) {
+			// Add as participant and subscribe in one request
+			await fetch(`http://localhost:3001/events/${event.id}/participants`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${session.user.accessToken}`,
+				},
+				body: JSON.stringify({
+					user_id: participant.userId,
+					subscribe: true
+				}),
+			});
+		}
 
 		return NextResponse.json(event);
 	} catch (error) {
-		console.error("Error creating event:", error);
+		console.error('Error creating event:', error);
 		return NextResponse.json(
-			{ error: "Internal Server Error" },
+			{ error: error instanceof Error ? error.message : 'Failed to create event' },
 			{ status: 500 }
 		);
 	}

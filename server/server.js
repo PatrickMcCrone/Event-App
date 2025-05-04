@@ -29,14 +29,10 @@ app.use((req, res, next) => {
 const { PGHOST, PGDATABASE, PGUSER, PGPASSWORD } = process.env;
 
 const pool = new Pool({
-	host: PGHOST,
-	database: PGDATABASE,
-	user: PGUSER,
-	password: PGPASSWORD,
-	port: 5432,
+	connectionString: process.env.DATABASE_URL,
 	ssl: {
-		rejectUnauthorized: false,
-	},
+		rejectUnauthorized: true
+	}
 });
 
 // Middleware to verify JWT token
@@ -1492,6 +1488,180 @@ app.delete(
 		}
 	}
 );
+
+// Update the users endpoint to include admin status
+app.get("/users", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const result = await client.query(
+			"SELECT id, name, email, admin FROM users ORDER BY name"
+		);
+		res.json(result.rows);
+	} catch (error) {
+		console.error("Error fetching users:", error);
+		res.status(500).json({ error: "Internal Server Error" });
+	} finally {
+		client.release();
+	}
+});
+
+// Add admin to event
+app.post("/events/:id/admins", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const { id: eventId } = req.params;
+		const { user_id, role, subscribe } = req.body;
+		const userId = req.user.id;
+
+		// Check if user owns the event
+		const eventResult = await client.query(
+			"SELECT * FROM events WHERE id = $1 AND created_by = $2",
+			[eventId, userId]
+		);
+		if (eventResult.rows.length === 0) {
+			return res
+				.status(403)
+				.json({ error: "Not authorized to add admins to this event" });
+		}
+
+		// Start a transaction
+		await client.query("BEGIN");
+
+		// Add admin
+		await client.query(
+			"INSERT INTO event_admins (event_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+			[eventId, user_id, role]
+		);
+
+		// If subscribe flag is true, also subscribe the user
+		if (subscribe) {
+			await client.query(
+				"INSERT INTO event_subscriptions (user_id, event_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				[user_id, eventId]
+			);
+			await client.query(
+				"INSERT INTO event_participants (user_id, event_id, status) VALUES ($1, $2, 'confirmed') ON CONFLICT DO NOTHING",
+				[user_id, eventId]
+			);
+		}
+
+		// Commit the transaction
+		await client.query("COMMIT");
+
+		res.json({ message: "Admin added successfully" });
+	} catch (error) {
+		// Rollback on error
+		await client.query("ROLLBACK");
+		console.error("Error adding admin:", error);
+		res.status(500).json({ error: "Failed to add admin" });
+	} finally {
+		client.release();
+	}
+});
+
+// Add participant to event
+app.post("/events/:id/participants", verifyJWT, async (req, res) => {
+	const client = await pool.connect();
+	try {
+		const { id: eventId } = req.params;
+		const { user_id, subscribe } = req.body;
+		const userId = req.user.id;
+
+		// Check if user owns the event
+		const eventResult = await client.query(
+			"SELECT * FROM events WHERE id = $1 AND created_by = $2",
+			[eventId, userId]
+		);
+		if (eventResult.rows.length === 0) {
+			return res
+				.status(403)
+				.json({ error: "Not authorized to add participants to this event" });
+		}
+
+		// Start a transaction
+		await client.query("BEGIN");
+
+		// Add participant with confirmed status
+		await client.query(
+			"INSERT INTO event_participants (event_id, user_id, status) VALUES ($1, $2, 'confirmed') ON CONFLICT (event_id, user_id) DO UPDATE SET status = 'confirmed'",
+			[eventId, user_id]
+		);
+
+		// If subscribe flag is true, also subscribe the user
+		if (subscribe) {
+			await client.query(
+				"INSERT INTO event_subscriptions (user_id, event_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+				[user_id, eventId]
+			);
+		}
+
+		// Commit the transaction
+		await client.query("COMMIT");
+
+		res.json({ message: "Participant added successfully" });
+	} catch (error) {
+		// Rollback on error
+		await client.query("ROLLBACK");
+		console.error("Error adding participant:", error);
+		res.status(500).json({ error: "Failed to add participant" });
+	} finally {
+		client.release();
+	}
+});
+
+// Get event admins
+app.get("/events/:id/admins", verifyJWT, async (req, res) => {
+	const { id: eventId } = req.params;
+	const client = await pool.connect();
+
+	try {
+		const result = await client.query(
+			`SELECT 
+				ea.*,
+				u.name,
+				u.email
+			FROM event_admins ea
+			JOIN users u ON ea.user_id = u.id
+			WHERE ea.event_id = $1
+			ORDER BY ea.role, u.name`,
+			[eventId]
+		);
+
+		res.json(result.rows);
+	} catch (error) {
+		console.error("Error fetching admins:", error);
+		res.status(500).json({ error: "Failed to fetch admins" });
+	} finally {
+		client.release();
+	}
+});
+
+// Get event participants
+app.get("/events/:id/participants", verifyJWT, async (req, res) => {
+	const { id: eventId } = req.params;
+	const client = await pool.connect();
+
+	try {
+		const result = await client.query(
+			`SELECT 
+				ep.*,
+				u.name,
+				u.email
+			FROM event_participants ep
+			JOIN users u ON ep.user_id = u.id
+			WHERE ep.event_id = $1
+			ORDER BY ep.role, u.name`,
+			[eventId]
+		);
+
+		res.json(result.rows);
+	} catch (error) {
+		console.error("Error fetching participants:", error);
+		res.status(500).json({ error: "Failed to fetch participants" });
+	} finally {
+		client.release();
+	}
+});
 
 app.listen(PORT, async () => {
 	try {
