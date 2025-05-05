@@ -1631,7 +1631,26 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 
 	try {
-		const result = await client.query(
+		// First get the event creator
+		const eventResult = await client.query(
+			`SELECT 
+				e.created_by,
+				u.name,
+				u.email
+			FROM events e
+			JOIN users u ON e.created_by = u.id
+			WHERE e.id = $1`,
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const eventCreator = eventResult.rows[0];
+
+		// Then get other admins
+		const adminsResult = await client.query(
 			`SELECT 
 				ea.*,
 				u.name,
@@ -1643,7 +1662,19 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 			[eventId]
 		);
 
-		res.json(result.rows);
+		// Combine event creator with other admins
+		const allAdmins = [
+			{
+				id: eventCreator.created_by,
+				user_id: eventCreator.created_by,
+				name: eventCreator.name,
+				email: eventCreator.email,
+				role: 'creator'
+			},
+			...adminsResult.rows
+		];
+
+		res.json(allAdmins);
 	} catch (error) {
 		console.error("Error fetching admins:", error);
 		res.status(500).json({ error: "Failed to fetch admins" });
