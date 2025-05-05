@@ -612,7 +612,35 @@ app.delete("/events/:id/subscribe", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
 		const { id: eventId } = req.params;
-		const userId = req.user.id;
+		const { user_id } = req.body;
+		const userId = user_id || req.user.id; // Use provided user_id or authenticated user's id
+
+		// Check if user is admin or event creator
+		const eventResult = await client.query(
+			"SELECT created_by FROM events WHERE id = $1",
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const isEventCreator = eventResult.rows[0].created_by === req.user.id;
+		const isAdmin = await client.query(
+			"SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2",
+			[eventId, req.user.id]
+		);
+
+		// Only allow if user is unsubscribing themselves, or if they are admin/creator
+		if (
+			userId !== req.user.id &&
+			!isEventCreator &&
+			isAdmin.rows.length === 0
+		) {
+			return res
+				.status(403)
+				.json({ error: "Not authorized to unsubscribe this user" });
+		}
 
 		// Start a transaction
 		await client.query("BEGIN");
@@ -1599,7 +1627,26 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 
 	try {
-		const result = await client.query(
+		// First get the event creator
+		const eventResult = await client.query(
+			`SELECT 
+				e.created_by,
+				u.name,
+				u.email
+			FROM events e
+			JOIN users u ON e.created_by = u.id
+			WHERE e.id = $1`,
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const eventCreator = eventResult.rows[0];
+
+		// Then get other admins
+		const adminsResult = await client.query(
 			`SELECT 
 				ea.*,
 				u.name,
@@ -1611,7 +1658,19 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 			[eventId]
 		);
 
-		res.json(result.rows);
+		// Combine event creator with other admins
+		const allAdmins = [
+			{
+				id: eventCreator.created_by,
+				user_id: eventCreator.created_by,
+				name: eventCreator.name,
+				email: eventCreator.email,
+				role: "creator",
+			},
+			...adminsResult.rows,
+		];
+
+		res.json(allAdmins);
 	} catch (error) {
 		console.error("Error fetching admins:", error);
 		res.status(500).json({ error: "Failed to fetch admins" });
@@ -1646,6 +1705,86 @@ app.get("/events/:id/participants", verifyJWT, async (req, res) => {
 		client.release();
 	}
 });
+
+app.patch(
+	"/events/:id/subscribers/:userId/status",
+	verifyJWT,
+	async (req, res) => {
+		const client = await pool.connect();
+		try {
+			const { id: eventId, userId } = req.params;
+			const { status } = req.body;
+
+			// Validate status
+			if (!["enabled", "disabled"].includes(status)) {
+				return res
+					.status(400)
+					.json({
+						error: "Invalid status value. Must be 'enabled' or 'disabled'",
+					});
+			}
+
+			// Start transaction
+			await client.query("BEGIN");
+
+			// Check if user is admin or speaker
+			const adminResult = await client.query(
+				"SELECT * FROM event_admins WHERE event_id = $1 AND user_id = $2",
+				[eventId, req.user.id]
+			);
+
+			if (adminResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res
+					.status(403)
+					.json({
+						error: "Not authorized to modify subscriber status",
+					});
+			}
+
+			// Check if event exists
+			const eventResult = await client.query(
+				"SELECT 1 FROM events WHERE id = $1",
+				[eventId]
+			);
+
+			if (eventResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res.status(404).json({ error: "Event not found" });
+			}
+
+			// Check if subscriber exists
+			const subscriberResult = await client.query(
+				"SELECT 1 FROM event_participants WHERE event_id = $1 AND user_id = $2",
+				[eventId, userId]
+			);
+
+			if (subscriberResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res.status(404).json({ error: "Subscriber not found" });
+			}
+
+			// Update subscriber status
+			await client.query(
+				"UPDATE event_participants SET status = $1 WHERE event_id = $2 AND user_id = $3",
+				[status, eventId, userId]
+			);
+
+			// Commit transaction
+			await client.query("COMMIT");
+
+			res.json({ message: "Subscriber status updated successfully" });
+		} catch (error) {
+			await client.query("ROLLBACK");
+			console.error("Error updating subscriber status:", error);
+			res.status(500).json({
+				error: "Failed to update subscriber status",
+			});
+		} finally {
+			client.release();
+		}
+	}
+);
 
 // Helper function to send event reminders
 async function sendEventReminders() {
