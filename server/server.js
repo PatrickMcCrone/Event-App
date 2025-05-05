@@ -47,46 +47,40 @@ const verifyJWT = async (req, res, next) => {
 	}
 
 	try {
-		// Try to verify as a JWT first
-		try {
-			console.log("Attempting JWT verification");
-			const decoded = jwt.verify(token, process.env.JWT_SECRET);
-			console.log("JWT verification successful:", decoded);
-			req.user = decoded;
-			return next();
-		} catch (jwtError) {
-			console.log("JWT verification failed:", jwtError.message);
-			// If JWT verification fails, try Google token
-			const googleResponse = await fetch(
-				`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`
-			);
-			if (googleResponse.ok) {
-				const googleData = await googleResponse.json();
-				console.log(
-					"Google token verification successful:",
-					googleData
+		// Try Google token verification first
+		const googleResponse = await fetch(
+			`https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${token}`
+		);
+		if (googleResponse.ok) {
+			const googleData = await googleResponse.json();
+			console.log("Google token verification successful:", googleData);
+			// Find the user in our database using the Google ID
+			const client = await pool.connect();
+			try {
+				const userResult = await client.query(
+					"SELECT * FROM users WHERE google_id = $1",
+					[googleData.sub]
 				);
-				// Find the user in our database using the Google ID
-				const client = await pool.connect();
-				try {
-					const userResult = await client.query(
-						"SELECT * FROM users WHERE google_id = $1",
-						[googleData.sub]
-					);
-					if (userResult.rows.length > 0) {
-						req.user = userResult.rows[0];
-						return next();
-					} else {
-						console.log("User not found in database");
-						return res
-							.status(401)
-							.json({ error: "User not found" });
-					}
-				} finally {
-					client.release();
+				if (userResult.rows.length > 0) {
+					req.user = userResult.rows[0];
+					return next();
+				} else {
+					console.log("User not found in database");
+					return res.status(401).json({ error: "User not found" });
 				}
-			} else {
-				console.log("Google token verification failed");
+			} finally {
+				client.release();
+			}
+		} else {
+			console.log("Google token verification failed, trying JWT");
+			// If Google token verification fails, try JWT
+			try {
+				const decoded = jwt.verify(token, process.env.JWT_SECRET);
+				console.log("JWT verification successful:", decoded);
+				req.user = decoded;
+				return next();
+			} catch (jwtError) {
+				console.log("JWT verification failed:", jwtError.message);
 				throw new Error("Invalid token");
 			}
 		}
@@ -1573,11 +1567,9 @@ app.post("/events/:id/participants", verifyJWT, async (req, res) => {
 			[eventId, userId]
 		);
 		if (eventResult.rows.length === 0) {
-			return res
-				.status(403)
-				.json({
-					error: "Not authorized to add participants to this event",
-				});
+			return res.status(403).json({
+				error: "Not authorized to add participants to this event",
+			});
 		}
 
 		// Start a transaction
