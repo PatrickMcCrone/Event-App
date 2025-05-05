@@ -10,7 +10,7 @@ export async function POST(request: Request) {
 		// Send email to admin
 		const { data, error } = await resend.emails.send({
 			from: "onboarding@resend.dev",
-			to: process.env.ADMIN_EMAIL || "your_email@example.com",
+			to: "onboarding@resend.dev",
 			subject: "New Admin Application",
 			html: `
         <h2>New Admin Application</h2>

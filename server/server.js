@@ -1267,7 +1267,7 @@ async function sendEmailNotification(userEmail, subject, message) {
 		const resend = new Resend(process.env.RESEND_API_KEY);
 		await resend.emails.send({
 			from: "notifications@event-app.com",
-			to: userEmail,
+			to: "onboarding@resend.dev", // This is the correct test address
 			subject: subject,
 			html: message,
 		});
@@ -1717,11 +1717,9 @@ app.patch(
 
 			// Validate status
 			if (!["enabled", "disabled"].includes(status)) {
-				return res
-					.status(400)
-					.json({
-						error: "Invalid status value. Must be 'enabled' or 'disabled'",
-					});
+				return res.status(400).json({
+					error: "Invalid status value. Must be 'enabled' or 'disabled'",
+				});
 			}
 
 			// Start transaction
@@ -1735,11 +1733,9 @@ app.patch(
 
 			if (adminResult.rows.length === 0) {
 				await client.query("ROLLBACK");
-				return res
-					.status(403)
-					.json({
-						error: "Not authorized to modify subscriber status",
-					});
+				return res.status(403).json({
+					error: "Not authorized to modify subscriber status",
+				});
 			}
 
 			// Check if event exists
