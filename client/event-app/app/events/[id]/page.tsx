@@ -31,6 +31,7 @@ interface Subscriber {
 	email: string;
 	user_id: number;
 	role?: string;
+	status?: string;
 }
 
 interface Announcement {
@@ -62,6 +63,7 @@ export default function EventDetails() {
 	const [error, setError] = useState<string | null>(null);
 	const [settings, setSettings] = useState({ timezone: "" });
 	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
+	const [authToken, setAuthToken] = useState<string | null>(null);
 
 	// Fetch user settings first
 	useEffect(() => {
@@ -264,6 +266,40 @@ export default function EventDetails() {
 			}
 		} catch (error) {
 			alert("Failed to delete announcement.");
+		}
+	};
+
+	const handleToggleSubscriberStatus = async (userId: number, currentStatus: string) => {
+		if (!session?.user?.id || !authToken) return;
+
+		try {
+			const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribers/${userId}/status`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ status: newStatus }),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to update subscriber status');
+			}
+
+			// Update local state
+			setSubscribers(prevSubscribers =>
+				prevSubscribers.map(sub =>
+					sub.user_id === userId
+						? { ...sub, status: newStatus }
+						: sub
+				)
+			);
+		} catch (error) {
+			console.error('Error updating subscriber status:', error);
 		}
 	};
 
