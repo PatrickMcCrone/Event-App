@@ -618,7 +618,29 @@ app.delete("/events/:id/subscribe", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
 		const { id: eventId } = req.params;
-		const userId = req.user.id;
+		const { user_id } = req.body;
+		const userId = user_id || req.user.id; // Use provided user_id or authenticated user's id
+
+		// Check if user is admin or event creator
+		const eventResult = await client.query(
+			"SELECT created_by FROM events WHERE id = $1",
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const isEventCreator = eventResult.rows[0].created_by === req.user.id;
+		const isAdmin = await client.query(
+			"SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2",
+			[eventId, req.user.id]
+		);
+
+		// Only allow if user is unsubscribing themselves, or if they are admin/creator
+		if (userId !== req.user.id && !isEventCreator && isAdmin.rows.length === 0) {
+			return res.status(403).json({ error: "Not authorized to unsubscribe this user" });
+		}
 
 		// Start a transaction
 		await client.query("BEGIN");
