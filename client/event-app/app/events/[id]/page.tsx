@@ -31,6 +31,7 @@ interface Subscriber {
 	email: string;
 	user_id: number;
 	role?: string;
+	status?: string;
 }
 
 interface Announcement {
@@ -62,6 +63,7 @@ export default function EventDetails() {
 	const [error, setError] = useState<string | null>(null);
 	const [settings, setSettings] = useState({ timezone: "" });
 	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
+	const [authToken, setAuthToken] = useState<string | null>(null);
 
 	// Fetch user settings first
 	useEffect(() => {
@@ -264,6 +266,70 @@ export default function EventDetails() {
 			}
 		} catch (error) {
 			alert("Failed to delete announcement.");
+		}
+	};
+
+	const handleToggleSubscriberStatus = async (userId: number, currentStatus: string) => {
+		if (!session?.user?.id || !authToken) return;
+
+		try {
+			const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribers/${userId}/status`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ status: newStatus }),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to update subscriber status');
+			}
+
+			// Update local state
+			setSubscribers(prevSubscribers =>
+				prevSubscribers.map(sub =>
+					sub.user_id === userId
+						? { ...sub, status: newStatus }
+						: sub
+				)
+			);
+		} catch (error) {
+			console.error('Error updating subscriber status:', error);
+		}
+	};
+
+	const handleUnsubscribe = async (userId: number) => {
+		if (!session?.user?.accessToken) return;
+
+		try {
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribe`,
+				{
+					method: 'DELETE',
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ user_id: userId }),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to unsubscribe user');
+			}
+
+			// Update local state by removing the unsubscribed user
+			setSubscribers(prevSubscribers =>
+				prevSubscribers.filter(sub => sub.user_id !== userId)
+			);
+		} catch (error) {
+			console.error('Error unsubscribing user:', error);
+			alert('Failed to unsubscribe user. Please try again.');
 		}
 	};
 
@@ -498,29 +564,51 @@ export default function EventDetails() {
 										subscribers.map((subscriber) => (
 											<div
 												key={subscriber.id}
-												className="flex items-center space-x-2"
+												className="flex items-center justify-between space-x-2 relative group"
 											>
-												<span className="text-slate-600 dark:text-gray-400">
-													{subscriber.name}
-													{subscriber.role &&
-														subscriber.role !==
-															"attendee" && (
-															<>
-																{" "}
-																(
-																{subscriber.role
-																	.charAt(0)
-																	.toUpperCase() +
-																	subscriber.role.slice(
-																		1
-																	)}
-																)
-															</>
-														)}
-												</span>
-												<span className="text-slate-500 dark:text-gray-500 text-sm">
-													({subscriber.email})
-												</span>
+												<div className="flex items-center space-x-2">
+													<span className="text-slate-600 dark:text-gray-400">
+														{subscriber.name}
+														{subscriber.role &&
+															subscriber.role !== "attendee" && (
+																<>
+																	{" "}
+																	({subscriber.role.charAt(0).toUpperCase() +
+																		subscriber.role.slice(1)})
+																</>
+															)}
+													</span>
+													<span className="text-slate-500 dark:text-gray-500 text-sm">
+														({subscriber.email})
+													</span>
+												</div>
+												{(isAdmin || event.creator_email === session?.user?.email) && (
+													<button
+														onClick={() => {
+															if (window.confirm('Are you sure you want to unsubscribe this user?')) {
+																handleUnsubscribe(subscriber.user_id);
+															}
+														}}
+														className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-all bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 z-10 shadow active:scale-90 hover:scale-110 transform"
+														title="Unsubscribe user"
+														aria-label="Unsubscribe user"
+													>
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															className="h-4 w-4"
+															fill="none"
+															viewBox="0 0 24 24"
+															stroke="currentColor"
+															strokeWidth={2}
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																d="M6 18L18 6M6 6l12 12"
+															/>
+														</svg>
+													</button>
+												)}
 											</div>
 										))
 									)}
