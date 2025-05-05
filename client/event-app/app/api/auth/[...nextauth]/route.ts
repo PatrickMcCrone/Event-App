@@ -1,8 +1,18 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { Account, Profile, User } from "next-auth";
+import { JWT } from "next-auth/jwt";
+import { Session } from "next-auth";
 
-// Define the session type to include the user ID and Google ID
+// Define the session type to include the user ID, Google ID, and admin status
 declare module "next-auth" {
+	interface User {
+		id?: string;
+		googleId?: string;
+		admin?: boolean;
+		accessToken?: string;
+	}
+
 	interface Session {
 		user: {
 			id?: string;
@@ -10,11 +20,13 @@ declare module "next-auth" {
 			email?: string | null;
 			image?: string | null;
 			googleId?: string;
+			admin?: boolean;
+			accessToken?: string;
 		};
 	}
 }
 
-const handler = NextAuth({
+export const authOptions = {
 	providers: [
 		GoogleProvider({
 			clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
@@ -29,7 +41,15 @@ const handler = NextAuth({
 		}),
 	],
 	callbacks: {
-		async signIn({ user, account, profile }) {
+		async signIn({
+			user,
+			account,
+			profile,
+		}: {
+			user: User;
+			account: Account | null;
+			profile?: Profile;
+		}) {
 			if (account?.provider === "google") {
 				try {
 					console.log("Google sign in attempt:", {
@@ -81,6 +101,9 @@ const handler = NextAuth({
 					// Store both the database ID and Google ID
 					user.id = userData.id;
 					user.googleId = profile?.sub;
+					user.admin = userData.admin;
+					user.accessToken = userData.token;
+
 					return true;
 				} catch (error) {
 					console.error("Error during Google sign in:", error);
@@ -89,17 +112,37 @@ const handler = NextAuth({
 			}
 			return true;
 		},
-		async jwt({ token, user }) {
+		async jwt({
+			token,
+			user,
+			account,
+		}: {
+			token: JWT;
+			user?: User;
+			account?: Account | null;
+		}) {
 			if (user) {
 				token.id = user.id;
 				token.googleId = user.googleId;
+				if (user?.admin !== undefined) {
+					token.admin = user.admin;
+				}
+				if (user?.accessToken) {
+					token.accessToken = user.accessToken;
+				}
 			}
 			return token;
 		},
-		async session({ session, token }) {
+		async session({ session, token }: { session: Session; token: JWT }) {
 			if (token && session.user) {
 				session.user.id = token.id as string;
 				session.user.googleId = token.googleId as string;
+				if (token.admin !== undefined) {
+					session.user.admin = token.admin as boolean;
+				}
+				if (token.accessToken) {
+					session.user.accessToken = token.accessToken as string;
+				}
 			}
 			return session;
 		},
@@ -109,6 +152,8 @@ const handler = NextAuth({
 		error: "/login", // Redirect to login page on error
 	},
 	debug: process.env.NODE_ENV === "development",
-});
+};
+
+const handler = NextAuth(authOptions);
 
 export { handler as GET, handler as POST };

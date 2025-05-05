@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "next-auth": "^4.24.11"
+    "date-fns": "^4.1.0",
+    "next-auth": "^4.24.11",
+    "resend": "^4.5.0"
   }
 }

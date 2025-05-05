@@ -1,108 +1,179 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import AuthWrapper from "../../components/AuthWrapper";
+import { useSession } from "next-auth/react";
+
+interface User {
+	id: number;
+	name: string;
+	email: string;
+	admin: boolean;
+}
+
+type AdminRole = "admin" | "chair" | "speaker" | "";
+type ParticipantRole = "chair" | "presenter" | "speaker" | "attendee" | "";
+
+interface FormData {
+	title: string;
+	description: string;
+	start_date: string;
+	end_date: string;
+	start_time: string;
+	end_time: string;
+	location: string;
+	type: string;
+	timezone: string;
+	selectedAdmins: { userId: number; role: AdminRole }[];
+	selectedParticipants: { userId: number; role: ParticipantRole }[];
+}
 
 export default function CreateEvent() {
-	const [formData, setFormData] = useState({
+	const router = useRouter();
+	const { data: session } = useSession();
+	const [users, setUsers] = useState<User[]>([]);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const [formData, setFormData] = useState<FormData>({
 		title: "",
 		description: "",
-		date: "",
-		time: "",
+		start_date: "",
+		end_date: "",
+		start_time: "",
+		end_time: "",
 		location: "",
-		eventType: "",
+		type: "conference",
+		timezone: "America/New_York",
+		selectedAdmins: [],
+		selectedParticipants: [],
 	});
 
-	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [errorMessage, setErrorMessage] = useState("");
-	const [successMessage, setSuccessMessage] = useState("");
+	const adminRoles = ["Admin", "Chair", "Speaker"].sort();
+	const participantRoles = [
+		"Attendee",
+		"Chair",
+		"Presenter",
+		"Speaker",
+	].sort();
 
-	// Handle form field change
+	useEffect(() => {
+		fetchUsers();
+	}, []);
+
+	const fetchUsers = async () => {
+		try {
+			const response = await fetch("/api/users");
+			if (!response.ok) throw new Error("Failed to fetch users");
+			const data = await response.json();
+			setUsers(data);
+		} catch (err) {
+			setError("Failed to load users");
+			console.error(err);
+		}
+	};
+
 	const handleInputChange = (
 		e: React.ChangeEvent<
 			HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
 		>
 	) => {
 		const { name, value } = e.target;
-		setFormData({
-			...formData,
-			[name]: value,
+		setFormData((prev) => ({ ...prev, [name]: value }));
+	};
+
+	const handleAdminSelect = (userId: number, role: AdminRole) => {
+		setFormData((prev) => {
+			const existingAdmin = prev.selectedAdmins.find(
+				(a) => a.userId === userId
+			);
+			if (existingAdmin) {
+				if (role === "") {
+					return {
+						...prev,
+						selectedAdmins: prev.selectedAdmins.filter(
+							(a) => a.userId !== userId
+						),
+					};
+				}
+				return {
+					...prev,
+					selectedAdmins: prev.selectedAdmins.map((a) =>
+						a.userId === userId ? { ...a, role } : a
+					),
+				};
+			}
+			return {
+				...prev,
+				selectedAdmins: [...prev.selectedAdmins, { userId, role }],
+			};
 		});
 	};
 
-	// Handle form submission
+	const handleParticipantSelect = (userId: number, role: ParticipantRole) => {
+		setFormData((prev) => {
+			const existingParticipant = prev.selectedParticipants.find(
+				(p) => p.userId === userId
+			);
+			if (existingParticipant) {
+				if (role === "") {
+					return {
+						...prev,
+						selectedParticipants: prev.selectedParticipants.filter(
+							(p) => p.userId !== userId
+						),
+					};
+				}
+				return {
+					...prev,
+					selectedParticipants: prev.selectedParticipants.map((p) =>
+						p.userId === userId ? { ...p, role } : p
+					),
+				};
+			}
+			return {
+				...prev,
+				selectedParticipants: [
+					...prev.selectedParticipants,
+					{ userId, role },
+				],
+			};
+		});
+	};
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
-		setIsSubmitting(true);
-		setErrorMessage("");
-		setSuccessMessage("");
-
-		// Combine date and time fields into a single ISO string
-		const formattedDateTime = `${formData.date}T${formData.time}`;
-
-		const eventTypeLowerCase = formData.eventType.toLowerCase();
-
-		const updatedFormData = {
-			...formData,
-			eventType: eventTypeLowerCase,
-			date: formattedDateTime, // Combine date and time here
-		};
-
-		// Simple form validation
-		if (
-			!formData.title ||
-			!formData.date ||
-			!formData.location ||
-			!formData.eventType ||
-			!formData.time
-		) {
-			setErrorMessage("Please fill in all required fields.");
-			setIsSubmitting(false);
-			return;
-		}
-
-		console.log("Form Data being sent:", updatedFormData);
+		setLoading(true);
+		setError(null);
 
 		try {
-			// Conditionally set the endpoint based on event type
-			let url = "http://localhost:3001/conferences"; // Default to conferences
-			if (updatedFormData.eventType === "workshop") {
-				url = "http://localhost:3001/workshops"; // Example URL for workshops
-			} else if (updatedFormData.eventType === "seminar") {
-				url = "http://localhost:3001/seminars"; // Example URL for seminars
-			} else if (updatedFormData.eventType === "talk") {
-				url = "http://localhost:3001/talks"; // Example URL for talks
-			}
-
-			// Send data to the correct endpoint
-			const response = await fetch(url, {
+			const response = await fetch("/api/events", {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify(updatedFormData),
+				body: JSON.stringify({
+					...formData,
+					selectedAdmins: formData.selectedAdmins.filter(
+						(a) => a.role !== ""
+					),
+					selectedParticipants: formData.selectedParticipants.filter(
+						(p) => p.role !== ""
+					),
+				}),
 			});
 
 			if (!response.ok) {
 				throw new Error("Failed to create event");
 			}
 
-			setSuccessMessage("Event created successfully!");
-			setFormData({
-				title: "",
-				description: "",
-				date: "",
-				time: "",
-				location: "",
-				eventType: "",
-			});
-		} catch (error: unknown) {
-			if (error instanceof Error) {
-				setErrorMessage(error.message);
-			} else {
-				setErrorMessage("An unexpected error occurred.");
-			}
+			const data = await response.json();
+			router.push(`/events/${data.id}`);
+		} catch (err) {
+			setError("Failed to create event");
+			console.error(err);
 		} finally {
-			setIsSubmitting(false);
+			setLoading(false);
 		}
 	};
 
@@ -120,14 +191,9 @@ export default function CreateEvent() {
 					</div>
 
 					{/* Error or Success Message */}
-					{errorMessage && (
+					{error && (
 						<div className="mb-6 p-4 bg-rose-50 dark:bg-red-900 text-rose-700 dark:text-red-100 rounded-lg border border-rose-100 dark:border-red-800">
-							{errorMessage}
-						</div>
-					)}
-					{successMessage && (
-						<div className="mb-6 p-4 bg-emerald-50 dark:bg-green-900 text-emerald-700 dark:text-green-100 rounded-lg border border-emerald-100 dark:border-green-800">
-							{successMessage}
+							{error}
 						</div>
 					)}
 
@@ -139,8 +205,8 @@ export default function CreateEvent() {
 									<span className="text-rose-500">*</span>
 								</label>
 								<select
-									name="eventType"
-									value={formData.eventType}
+									name="type"
+									value={formData.type}
 									onChange={handleInputChange}
 									required
 									className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
@@ -149,7 +215,7 @@ export default function CreateEvent() {
 									<option value="conference">
 										Conference
 									</option>
-									<option value="seminar">Seminar</option>
+									<option value="meeting">Meeting</option>
 									<option value="talk">Talk</option>
 									<option value="workshop">Workshop</option>
 								</select>
@@ -189,13 +255,13 @@ export default function CreateEvent() {
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 							<div>
 								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
-									Event Date{" "}
+									Start Date{" "}
 									<span className="text-rose-500">*</span>
 								</label>
 								<input
 									type="date"
-									name="date"
-									value={formData.date}
+									name="start_date"
+									value={formData.start_date}
 									onChange={handleInputChange}
 									required
 									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
@@ -204,13 +270,46 @@ export default function CreateEvent() {
 
 							<div>
 								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
-									Event Time{" "}
+									End Date{" "}
+									<span className="text-rose-500">*</span>
+								</label>
+								<input
+									type="date"
+									name="end_date"
+									value={formData.end_date}
+									onChange={handleInputChange}
+									required
+									min={formData.start_date}
+									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+								/>
+							</div>
+						</div>
+
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+							<div>
+								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+									Start Time{" "}
 									<span className="text-rose-500">*</span>
 								</label>
 								<input
 									type="time"
-									name="time"
-									value={formData.time}
+									name="start_time"
+									value={formData.start_time}
+									onChange={handleInputChange}
+									required
+									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+									End Time{" "}
+									<span className="text-rose-500">*</span>
+								</label>
+								<input
+									type="time"
+									name="end_time"
+									value={formData.end_time}
 									onChange={handleInputChange}
 									required
 									className="mt-1 block w-full px-3 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
@@ -234,17 +333,163 @@ export default function CreateEvent() {
 							/>
 						</div>
 
+						<div>
+							<label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+								Timezone
+							</label>
+							<select
+								name="timezone"
+								value={formData.timezone}
+								onChange={handleInputChange}
+								className="mt-1 block w-full pl-3 pr-10 py-2.5 text-base border-slate-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-lg bg-slate-50 text-slate-900 shadow-sm"
+							>
+								<option value="America/New_York">
+									Eastern Time (ET)
+								</option>
+								<option value="America/Chicago">
+									Central Time (CT)
+								</option>
+								<option value="America/Denver">
+									Mountain Time (MT)
+								</option>
+								<option value="America/Los_Angeles">
+									Pacific Time (PT)
+								</option>
+							</select>
+						</div>
+
+						{/* Admin Selection */}
+						<div>
+							<h2 className="text-xl font-bold mb-4">
+								Select Admins
+							</h2>
+							<div className="max-h-64 overflow-y-auto space-y-2">
+								{users
+									.filter(
+										(user) =>
+											user.admin &&
+											user.id !==
+												Number(session?.user?.id)
+									)
+									.sort((a, b) =>
+										a.name.localeCompare(b.name)
+									)
+									.map((user) => (
+										<div
+											key={user.id}
+											className="flex items-center justify-between p-2 border rounded text-sm"
+										>
+											<div>
+												<h3 className="font-semibold">
+													{user.name}
+												</h3>
+												<p className="text-gray-600">
+													{user.email}
+												</p>
+											</div>
+											<select
+												className="border rounded px-2 py-1 bg-slate-50 text-slate-900 dark:bg-gray-700 dark:text-white"
+												value={
+													formData.selectedAdmins.find(
+														(a) =>
+															a.userId === user.id
+													)?.role || ""
+												}
+												onChange={(e) =>
+													handleAdminSelect(
+														user.id,
+														e.target
+															.value as AdminRole
+													)
+												}
+											>
+												<option value="">
+													No role
+												</option>
+												{adminRoles.map((role) => (
+													<option
+														key={role}
+														value={role.toLowerCase()}
+													>
+														{role}
+													</option>
+												))}
+											</select>
+										</div>
+									))}
+							</div>
+						</div>
+
+						{/* Participant Selection */}
+						<div>
+							<h2 className="text-xl font-bold mb-4">
+								Select Participants
+							</h2>
+							<div className="max-h-64 overflow-y-auto space-y-2">
+								{users
+									.filter((user) => !user.admin)
+									.sort((a, b) =>
+										a.name.localeCompare(b.name)
+									)
+									.map((user) => (
+										<div
+											key={user.id}
+											className="flex items-center justify-between p-2 border rounded text-sm"
+										>
+											<div>
+												<h3 className="font-semibold">
+													{user.name}
+												</h3>
+												<p className="text-gray-600">
+													{user.email}
+												</p>
+											</div>
+											<select
+												className="border rounded px-2 py-1 bg-slate-50 text-slate-900 dark:bg-gray-700 dark:text-white"
+												value={
+													formData.selectedParticipants.find(
+														(p) =>
+															p.userId === user.id
+													)?.role || ""
+												}
+												onChange={(e) =>
+													handleParticipantSelect(
+														user.id,
+														e.target
+															.value as ParticipantRole
+													)
+												}
+											>
+												<option value="">
+													No role
+												</option>
+												{participantRoles.map(
+													(role) => (
+														<option
+															key={role}
+															value={role.toLowerCase()}
+														>
+															{role}
+														</option>
+													)
+												)}
+											</select>
+										</div>
+									))}
+							</div>
+						</div>
+
 						<div className="flex justify-end pt-4">
 							<button
 								type="submit"
-								disabled={isSubmitting}
+								disabled={loading}
 								className={`px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium transition-colors duration-200 ${
-									isSubmitting
+									loading
 										? "opacity-50 cursor-not-allowed"
 										: "hover:bg-indigo-700"
 								}`}
 							>
-								{isSubmitting ? (
+								{loading ? (
 									<div className="flex items-center">
 										<svg
 											className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
