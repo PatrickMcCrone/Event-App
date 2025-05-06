@@ -2,6 +2,8 @@
 
 A full-stack event management application built with Next.js, Express, and PostgreSQL. This application allows users to create, manage, and participate in events with features like real-time notifications, announcements, and user management.
 
+## Team
+
 Front-end:
 
 -   Johnathan Whitney
