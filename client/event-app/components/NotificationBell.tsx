@@ -218,7 +218,7 @@ export default function NotificationBell() {
 					</div>
 					<div className="flex-1 px-6 py-4 space-y-4 overflow-y-auto max-h-56">
 						{notifications.length === 0 ? (
-							<p className="text-black dark:text-black text-center mt-8">
+							<p className="text-black dark:text-white text-center mt-8">
 								No notifications
 							</p>
 						) : (
@@ -247,16 +247,16 @@ export default function NotificationBell() {
 											/>
 										</svg>
 										<div className="flex flex-col flex-1 min-w-0">
-											<span className="font-semibold text-black dark:text-black truncate">
+											<span className="font-semibold text-black dark:text-white truncate">
 												{notification.event_title ||
 													"Event"}
 											</span>
-											<span className="text-xs text-black dark:text-black truncate">
+											<span className="text-xs text-black dark:text-white truncate">
 												{notification.message}
 											</span>
 										</div>
 										<div className="flex flex-col items-end min-w-[90px]">
-											<span className="text-xs text-black dark:text-black">
+											<span className="text-xs text-black dark:text-white">
 												{notification.created_at
 													? new Date(
 															notification.created_at
@@ -269,7 +269,7 @@ export default function NotificationBell() {
 														)
 													: ""}
 											</span>
-											<span className="text-xs text-black dark:text-black">
+											<span className="text-xs text-black dark:text-white">
 												{notification.created_at
 													? new Date(
 															notification.created_at

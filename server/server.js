@@ -1841,6 +1841,32 @@ setInterval(sendEventReminders, 60 * 60 * 1000); // Run every hour
 // Export the function for testing
 module.exports = { sendEventReminders };
 
+// Notify all subscribers of an event with an in-app notification
+async function notifySubscribers(eventId, message) {
+	const client = await pool.connect();
+	try {
+		// Get all user IDs subscribed to this event
+		const result = await client.query(
+			`SELECT user_id FROM event_subscriptions WHERE event_id = $1`,
+			[eventId]
+		);
+		const userIds = result.rows.map((row) => row.user_id);
+
+		// Insert a notification for each user
+		for (const userId of userIds) {
+			await client.query(
+				`INSERT INTO notifications (user_id, event_id, message, read, created_at)
+				 VALUES ($1, $2, $3, false, CURRENT_TIMESTAMP)`,
+				[userId, eventId, message]
+			);
+		}
+	} catch (error) {
+		console.error("Error notifying subscribers:", error);
+	} finally {
+		client.release();
+	}
+}
+
 app.listen(PORT, async () => {
 	try {
 		await initializeDatabase();
