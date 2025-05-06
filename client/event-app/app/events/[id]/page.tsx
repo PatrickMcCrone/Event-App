@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import AnnouncementForm from "@/components/AnnouncementForm";
 import { Button } from "@/components/ui/button";
 import { toZonedTime, format as formatTz } from "date-fns-tz";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 interface Event {
 	id: number;
@@ -64,6 +65,7 @@ export default function EventDetails() {
 	const [settings, setSettings] = useState({ timezone: "" });
 	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
 	const [authToken, setAuthToken] = useState<string | null>(null);
+	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
 	// Fetch user settings first
 	useEffect(() => {
@@ -333,6 +335,29 @@ export default function EventDetails() {
 		}
 	};
 
+	const handleDeleteEvent = async () => {
+		try {
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}`,
+				{
+					method: "DELETE",
+					headers: {
+						Authorization: `Bearer ${session?.user?.accessToken}`,
+					},
+				}
+			);
+
+			if (response.ok) {
+				router.push("/events");
+			} else {
+				throw new Error("Failed to delete event");
+			}
+		} catch (error) {
+			console.error("Error deleting event:", error);
+			setError("Failed to delete event. Please try again.");
+		}
+	};
+
 	return (
 		<div className="min-h-screen bg-slate-50 dark:bg-gray-900 p-6">
 			{/* Header */}
@@ -341,20 +366,44 @@ export default function EventDetails() {
 					<h1 className="text-3xl font-bold text-slate-800 dark:text-white">
 						{event.title}
 					</h1>
-					<span
-						className={`px-3 py-1 rounded-full text-sm font-medium ${
-							event.status === "upcoming"
-								? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
-								: event.status === "ongoing"
+					<div className="flex items-center gap-4">
+						<span
+							className={`px-3 py-1 rounded-full text-sm font-medium ${
+								event.status === "upcoming"
+									? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
+									: event.status === "ongoing"
 									? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
 									: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
-						}`}
-					>
-						{event.status
-							? event.status.charAt(0).toUpperCase() +
-								event.status.slice(1)
-							: "Unknown"}
-					</span>
+							}`}
+						>
+							{event.status
+								? event.status.charAt(0).toUpperCase() +
+									event.status.slice(1)
+								: "Unknown"}
+						</span>
+						{isAdmin && (
+							<button
+								onClick={() => setShowDeleteDialog(true)}
+								className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+								title="Delete Event"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									className="h-6 w-6"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+									/>
+								</svg>
+							</button>
+						)}
+					</div>
 				</div>
 			</div>
 
@@ -674,6 +723,15 @@ export default function EventDetails() {
 					</div>
 				</div>
 			</div>
+
+			<ConfirmationDialog
+				isOpen={showDeleteDialog}
+				onClose={() => setShowDeleteDialog(false)}
+				onConfirm={handleDeleteEvent}
+				title="Delete Event"
+				message="Are you sure you want to delete this event? This action cannot be undone."
+				confirmText="Delete"
+			/>
 		</div>
 	);
 }
