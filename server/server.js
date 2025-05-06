@@ -612,7 +612,35 @@ app.delete("/events/:id/subscribe", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
 		const { id: eventId } = req.params;
-		const userId = req.user.id;
+		const { user_id } = req.body;
+		const userId = user_id || req.user.id; // Use provided user_id or authenticated user's id
+
+		// Check if user is admin or event creator
+		const eventResult = await client.query(
+			"SELECT created_by FROM events WHERE id = $1",
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const isEventCreator = eventResult.rows[0].created_by === req.user.id;
+		const isAdmin = await client.query(
+			"SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2",
+			[eventId, req.user.id]
+		);
+
+		// Only allow if user is unsubscribing themselves, or if they are admin/creator
+		if (
+			userId !== req.user.id &&
+			!isEventCreator &&
+			isAdmin.rows.length === 0
+		) {
+			return res
+				.status(403)
+				.json({ error: "Not authorized to unsubscribe this user" });
+		}
 
 		// Start a transaction
 		await client.query("BEGIN");
@@ -953,7 +981,6 @@ app.get("/settings/reminders/:userId", async (req, res) => {
 			// Return default settings if none exist
 			res.json({
 				eventReminders: true,
-				emailNotifications: true,
 				timezone: "America/New_York", // Default to Eastern time
 			});
 		} else {
@@ -962,7 +989,6 @@ app.get("/settings/reminders/:userId", async (req, res) => {
 			const settings = settingsResult.rows[0];
 			res.json({
 				eventReminders: settings.event_reminders,
-				emailNotifications: settings.email_notifications,
 				timezone: settings.timezone || "America/New_York",
 			});
 		}
@@ -977,8 +1003,7 @@ app.get("/settings/reminders/:userId", async (req, res) => {
 app.post("/settings/reminders", async (req, res) => {
 	const client = await pool.connect();
 	try {
-		const { userId, eventReminders, emailNotifications, timezone } =
-			req.body;
+		const { userId, eventReminders, timezone } = req.body;
 		console.log("Saving settings for User ID:", userId);
 
 		// Check if settings exist for this user_id
@@ -991,25 +1016,15 @@ app.post("/settings/reminders", async (req, res) => {
 			console.log("Creating new settings for User ID:", userId);
 			// Insert new settings
 			await client.query(
-				"INSERT INTO user_settings (user_id, event_reminders, email_notifications, timezone) VALUES ($1, $2, $3, $4)",
-				[
-					userId,
-					eventReminders,
-					emailNotifications,
-					timezone || "America/New_York",
-				]
+				"INSERT INTO user_settings (user_id, event_reminders, timezone) VALUES ($1, $2, $3)",
+				[userId, eventReminders, timezone || "America/New_York"]
 			);
 		} else {
 			console.log("Updating existing settings for User ID:", userId);
 			// Update existing settings
 			await client.query(
-				"UPDATE user_settings SET event_reminders = $1, email_notifications = $2, timezone = $3, updated_at = CURRENT_TIMESTAMP WHERE user_id = $4",
-				[
-					eventReminders,
-					emailNotifications,
-					timezone || "America/New_York",
-					userId,
-				]
+				"UPDATE user_settings SET event_reminders = $1, timezone = $2, updated_at = CURRENT_TIMESTAMP WHERE user_id = $3",
+				[eventReminders, timezone || "America/New_York", userId]
 			);
 		}
 
@@ -1138,6 +1153,19 @@ async function initializeDatabase() {
 			)
 		`);
 
+		// Create user_settings table
+		await client.query(`
+			CREATE TABLE IF NOT EXISTS user_settings (
+				id SERIAL PRIMARY KEY,
+				user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				event_reminders BOOLEAN DEFAULT TRUE,
+				timezone VARCHAR(50) DEFAULT 'America/New_York',
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(user_id)
+			)
+		`);
+
 		// Create events table
 		await client.query(`
 			CREATE TABLE IF NOT EXISTS events (
@@ -1233,92 +1261,82 @@ async function initializeDatabase() {
 	}
 }
 
+// Helper function to send email notifications
+async function sendEmailNotification(userEmail, subject, message) {
+	try {
+		const resend = new Resend(process.env.RESEND_API_KEY);
+		await resend.emails.send({
+			from: "notifications@event-app.com",
+			to: "onboarding@resend.dev", // This is the correct test address
+			subject: subject,
+			html: message,
+		});
+	} catch (error) {
+		console.error("Error sending email notification:", error);
+	}
+}
+
 // Create announcement
 app.post("/events/:id/announcements", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 	try {
-		const { id: eventId } = req.params;
-		const { title, message, recipientType, recipientIds } = req.body;
+		// Start transaction
+		await client.query("BEGIN");
+
+		const eventId = req.params.id;
+		const { title, message, recipientType } = req.body;
 		const userId = req.user.id;
 
-		// Check if user is an admin for this event
+		// Verify user is event admin
 		const adminCheck = await client.query(
-			`SELECT 1 FROM event_admins 
+			`SELECT role FROM event_participants 
 			WHERE event_id = $1 AND user_id = $2`,
 			[eventId, userId]
 		);
 
-		if (adminCheck.rows.length === 0) {
-			return res.status(403).json({
-				error: "Not authorized to create announcements for this event",
-			});
+		if (
+			adminCheck.rows.length === 0 ||
+			adminCheck.rows[0].role !== "admin"
+		) {
+			return res
+				.status(403)
+				.json({ error: "Only event admins can create announcements" });
 		}
 
-		// Start a transaction
-		await client.query("BEGIN");
-
-		// Create the announcement
+		// Create announcement
 		const announcementResult = await client.query(
-			`INSERT INTO announcements (event_id, user_id, title, message)
-			VALUES ($1, $2, $3, $4)
+			`INSERT INTO announcements (event_id, title, message, created_by, created_at)
+			VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
 			RETURNING *`,
-			[eventId, userId, title, message]
+			[eventId, title, message, userId]
 		);
-
 		const announcement = announcementResult.rows[0];
 
-		console.log("created_at:", announcement.created_at);
-		console.log("Date object:", new Date(announcement.created_at));
-
-		// Get all subscribers for this event
-		const subscribersResult = await client.query(
-			`SELECT user_id FROM event_subscriptions WHERE event_id = $1`,
-			[eventId]
-		);
-
-		// Determine recipients
-		let recipientUserIds;
-		if (
-			recipientType === "selected" &&
-			Array.isArray(recipientIds) &&
-			recipientIds.length > 0
-		) {
-			recipientUserIds = recipientIds
-				.map(Number)
-				.filter((id) => id !== userId);
-		} else {
-			recipientUserIds = subscribersResult.rows
-				.map((s) => s.user_id)
-				.filter((id) => id !== userId);
-		}
-
-		// Filter out any invalid/undefined/null IDs
-		recipientUserIds = recipientUserIds.filter(
-			(id) => typeof id === "number" && !isNaN(id)
-		);
-
-		// Query users table for valid IDs
-		let validRecipientUserIds = [];
-		if (recipientUserIds.length > 0) {
-			const validUsersResult = await client.query(
-				"SELECT id FROM users WHERE id = ANY($1)",
-				[recipientUserIds]
+		// Get recipient user IDs based on recipientType
+		let recipientUserIds = [];
+		if (recipientType === "all") {
+			const allUsersResult = await client.query(
+				`SELECT user_id FROM event_participants WHERE event_id = $1`,
+				[eventId]
 			);
-			validRecipientUserIds = validUsersResult.rows.map((row) => row.id);
+			recipientUserIds = allUsersResult.rows.map((row) => row.user_id);
+		} else if (recipientType === "confirmed") {
+			const confirmedUsersResult = await client.query(
+				`SELECT user_id FROM event_participants 
+				WHERE event_id = $1 AND status = 'confirmed'`,
+				[eventId]
+			);
+			recipientUserIds = confirmedUsersResult.rows.map(
+				(row) => row.user_id
+			);
 		}
-
-		// Log for debugging
-		console.log(
-			"Valid recipient user IDs for notifications:",
-			validRecipientUserIds
-		);
 
 		// Create notifications for recipients
-		if (validRecipientUserIds.length > 0) {
-			const notificationValues = validRecipientUserIds
+		if (recipientUserIds.length > 0) {
+			const notificationValues = recipientUserIds
 				.map(
-					(uid) =>
-						`(${uid}, ${eventId}, ${announcement.id}, 'New announcement: ${title}', false, CURRENT_TIMESTAMP)`
+					(userId) =>
+						`(${userId}, ${eventId}, ${announcement.id}, 'New announcement: ${title}', false, CURRENT_TIMESTAMP)`
 				)
 				.join(",");
 			await client.query(
@@ -1609,7 +1627,26 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 	const client = await pool.connect();
 
 	try {
-		const result = await client.query(
+		// First get the event creator
+		const eventResult = await client.query(
+			`SELECT 
+				e.created_by,
+				u.name,
+				u.email
+			FROM events e
+			JOIN users u ON e.created_by = u.id
+			WHERE e.id = $1`,
+			[eventId]
+		);
+
+		if (eventResult.rows.length === 0) {
+			return res.status(404).json({ error: "Event not found" });
+		}
+
+		const eventCreator = eventResult.rows[0];
+
+		// Then get other admins
+		const adminsResult = await client.query(
 			`SELECT 
 				ea.*,
 				u.name,
@@ -1621,7 +1658,19 @@ app.get("/events/:id/admins", verifyJWT, async (req, res) => {
 			[eventId]
 		);
 
-		res.json(result.rows);
+		// Combine event creator with other admins
+		const allAdmins = [
+			{
+				id: eventCreator.created_by,
+				user_id: eventCreator.created_by,
+				name: eventCreator.name,
+				email: eventCreator.email,
+				role: "creator",
+			},
+			...adminsResult.rows,
+		];
+
+		res.json(allAdmins);
 	} catch (error) {
 		console.error("Error fetching admins:", error);
 		res.status(500).json({ error: "Failed to fetch admins" });
@@ -1656,6 +1705,141 @@ app.get("/events/:id/participants", verifyJWT, async (req, res) => {
 		client.release();
 	}
 });
+
+app.patch(
+	"/events/:id/subscribers/:userId/status",
+	verifyJWT,
+	async (req, res) => {
+		const client = await pool.connect();
+		try {
+			const { id: eventId, userId } = req.params;
+			const { status } = req.body;
+
+			// Validate status
+			if (!["enabled", "disabled"].includes(status)) {
+				return res.status(400).json({
+					error: "Invalid status value. Must be 'enabled' or 'disabled'",
+				});
+			}
+
+			// Start transaction
+			await client.query("BEGIN");
+
+			// Check if user is admin or speaker
+			const adminResult = await client.query(
+				"SELECT * FROM event_admins WHERE event_id = $1 AND user_id = $2",
+				[eventId, req.user.id]
+			);
+
+			if (adminResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res.status(403).json({
+					error: "Not authorized to modify subscriber status",
+				});
+			}
+
+			// Check if event exists
+			const eventResult = await client.query(
+				"SELECT 1 FROM events WHERE id = $1",
+				[eventId]
+			);
+
+			if (eventResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res.status(404).json({ error: "Event not found" });
+			}
+
+			// Check if subscriber exists
+			const subscriberResult = await client.query(
+				"SELECT 1 FROM event_participants WHERE event_id = $1 AND user_id = $2",
+				[eventId, userId]
+			);
+
+			if (subscriberResult.rows.length === 0) {
+				await client.query("ROLLBACK");
+				return res.status(404).json({ error: "Subscriber not found" });
+			}
+
+			// Update subscriber status
+			await client.query(
+				"UPDATE event_participants SET status = $1 WHERE event_id = $2 AND user_id = $3",
+				[status, eventId, userId]
+			);
+
+			// Commit transaction
+			await client.query("COMMIT");
+
+			res.json({ message: "Subscriber status updated successfully" });
+		} catch (error) {
+			await client.query("ROLLBACK");
+			console.error("Error updating subscriber status:", error);
+			res.status(500).json({
+				error: "Failed to update subscriber status",
+			});
+		} finally {
+			client.release();
+		}
+	}
+);
+
+// Helper function to send event reminders
+async function sendEventReminders() {
+	const client = await pool.connect();
+	try {
+		// Get all events that start in the next 24 hours
+		const now = new Date();
+		const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+
+		const eventsResult = await client.query(
+			`SELECT e.id, e.title, e.start_date, e.start_time, e.location,
+			ep.user_id, us.event_reminders
+			FROM events e
+			JOIN event_participants ep ON e.id = ep.event_id
+			JOIN users u ON ep.user_id = u.id
+			LEFT JOIN user_settings us ON u.id = us.user_id
+			WHERE e.start_date BETWEEN $1 AND $2
+			AND ep.status = 'confirmed'
+			AND (us.event_reminders IS NULL OR us.event_reminders = true)`,
+			[now, tomorrow]
+		);
+
+		for (const event of eventsResult.rows) {
+			// Check if a notification for this event and user already exists in the last 24 hours
+			const existingNotification = await client.query(
+				`SELECT 1 FROM notifications 
+				WHERE user_id = $1 AND event_id = $2 
+				AND message LIKE $3 
+				AND created_at > NOW() - INTERVAL '24 hours'`,
+				[event.user_id, event.id, `Event Reminder: ${event.title}%`]
+			);
+
+			if (existingNotification.rows.length === 0) {
+				console.log(`Processing reminder for event: ${event.title}`);
+
+				// Create notification in the notification center
+				await client.query(
+					`INSERT INTO notifications (user_id, event_id, message, read, created_at)
+					VALUES ($1, $2, $3, false, CURRENT_TIMESTAMP)`,
+					[
+						event.user_id,
+						event.id,
+						`Event Reminder: ${event.title} starts soon!`,
+					]
+				);
+			}
+		}
+	} catch (error) {
+		console.error("Error sending event reminders:", error);
+	} finally {
+		client.release();
+	}
+}
+
+// Set up scheduled task to check for event reminders every hour
+setInterval(sendEventReminders, 60 * 60 * 1000); // Run every hour
+
+// Export the function for testing
+module.exports = { sendEventReminders };
 
 app.listen(PORT, async () => {
 	try {

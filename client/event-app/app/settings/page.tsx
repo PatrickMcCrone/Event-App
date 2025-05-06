@@ -5,7 +5,6 @@ import { useSession } from "next-auth/react";
 import AuthWrapper from "../../components/AuthWrapper";
 
 interface Settings {
-	emailNotifications: boolean;
 	eventReminders: boolean;
 	timezone: string;
 }
@@ -14,7 +13,6 @@ export default function Settings() {
 	const { theme, toggleTheme } = useTheme();
 	const { data: session } = useSession();
 	const [settings, setSettings] = useState<Settings>({
-		emailNotifications: true,
 		eventReminders: true,
 		timezone: "America/New_York",
 	});
@@ -57,7 +55,6 @@ export default function Settings() {
 					const data = await response.json();
 					setSettings((prev) => ({
 						...prev,
-						emailNotifications: data.emailNotifications,
 						eventReminders: data.eventReminders,
 						timezone: data.timezone || "America/New_York",
 					}));
@@ -112,7 +109,6 @@ export default function Settings() {
 					body: JSON.stringify({
 						userId: userId,
 						eventReminders: settings.eventReminders,
-						emailNotifications: settings.emailNotifications,
 						timezone: settings.timezone,
 					}),
 				}
@@ -155,36 +151,6 @@ export default function Settings() {
 							Notification Settings
 						</h2>
 						<div className="space-y-4">
-							<div className="flex items-center justify-between">
-								<div>
-									<label className="text-sm font-medium text-slate-700 dark:text-gray-300">
-										Email Notifications
-									</label>
-									<p className="text-sm text-slate-600 dark:text-gray-400">
-										Receive email notifications about your
-										events
-									</p>
-								</div>
-								<button
-									onClick={() =>
-										handleToggle("emailNotifications")
-									}
-									className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out ${
-										settings.emailNotifications
-											? "bg-indigo-600"
-											: "bg-slate-200 dark:bg-gray-700"
-									}`}
-								>
-									<span
-										className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 ease-in-out ${
-											settings.emailNotifications
-												? "translate-x-6"
-												: "translate-x-1"
-										}`}
-									/>
-								</button>
-							</div>
-
 							<div className="flex items-center justify-between">
 								<div>
 									<label className="text-sm font-medium text-slate-700 dark:text-gray-300">

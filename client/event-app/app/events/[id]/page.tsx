@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import AnnouncementForm from "@/components/AnnouncementForm";
 import { Button } from "@/components/ui/button";
 import { toZonedTime, format as formatTz } from "date-fns-tz";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 
 interface Event {
 	id: number;
@@ -31,6 +32,7 @@ interface Subscriber {
 	email: string;
 	user_id: number;
 	role?: string;
+	status?: string;
 }
 
 interface Announcement {
@@ -62,6 +64,8 @@ export default function EventDetails() {
 	const [error, setError] = useState<string | null>(null);
 	const [settings, setSettings] = useState({ timezone: "" });
 	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
+	const [authToken, setAuthToken] = useState<string | null>(null);
+	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
 	// Fetch user settings first
 	useEffect(() => {
@@ -267,6 +271,93 @@ export default function EventDetails() {
 		}
 	};
 
+	const handleToggleSubscriberStatus = async (userId: number, currentStatus: string) => {
+		if (!session?.user?.id || !authToken) return;
+
+		try {
+			const newStatus = currentStatus === 'enabled' ? 'disabled' : 'enabled';
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribers/${userId}/status`,
+				{
+					method: 'PATCH',
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ status: newStatus }),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to update subscriber status');
+			}
+
+			// Update local state
+			setSubscribers(prevSubscribers =>
+				prevSubscribers.map(sub =>
+					sub.user_id === userId
+						? { ...sub, status: newStatus }
+						: sub
+				)
+			);
+		} catch (error) {
+			console.error('Error updating subscriber status:', error);
+		}
+	};
+
+	const handleUnsubscribe = async (userId: number) => {
+		if (!session?.user?.accessToken) return;
+
+		try {
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribe`,
+				{
+					method: 'DELETE',
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({ user_id: userId }),
+				}
+			);
+
+			if (!response.ok) {
+				throw new Error('Failed to unsubscribe user');
+			}
+
+			// Update local state by removing the unsubscribed user
+			setSubscribers(prevSubscribers =>
+				prevSubscribers.filter(sub => sub.user_id !== userId)
+			);
+		} catch (error) {
+			console.error('Error unsubscribing user:', error);
+			alert('Failed to unsubscribe user. Please try again.');
+		}
+	};
+
+	const handleDeleteEvent = async () => {
+		try {
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}`,
+				{
+					method: "DELETE",
+					headers: {
+						Authorization: `Bearer ${session?.user?.accessToken}`,
+					},
+				}
+			);
+
+			if (response.ok) {
+				router.push("/events");
+			} else {
+				throw new Error("Failed to delete event");
+			}
+		} catch (error) {
+			console.error("Error deleting event:", error);
+			setError("Failed to delete event. Please try again.");
+		}
+	};
+
 	return (
 		<div className="min-h-screen bg-slate-50 dark:bg-gray-900 p-6">
 			{/* Header */}
@@ -275,20 +366,44 @@ export default function EventDetails() {
 					<h1 className="text-3xl font-bold text-slate-800 dark:text-white">
 						{event.title}
 					</h1>
-					<span
-						className={`px-3 py-1 rounded-full text-sm font-medium ${
-							event.status === "upcoming"
-								? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
-								: event.status === "ongoing"
+					<div className="flex items-center gap-4">
+						<span
+							className={`px-3 py-1 rounded-full text-sm font-medium ${
+								event.status === "upcoming"
+									? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
+									: event.status === "ongoing"
 									? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
 									: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
-						}`}
-					>
-						{event.status
-							? event.status.charAt(0).toUpperCase() +
-								event.status.slice(1)
-							: "Unknown"}
-					</span>
+							}`}
+						>
+							{event.status
+								? event.status.charAt(0).toUpperCase() +
+									event.status.slice(1)
+								: "Unknown"}
+						</span>
+						{isAdmin && (
+							<button
+								onClick={() => setShowDeleteDialog(true)}
+								className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+								title="Delete Event"
+							>
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									className="h-6 w-6"
+									fill="none"
+									viewBox="0 0 24 24"
+									stroke="currentColor"
+								>
+									<path
+										strokeLinecap="round"
+										strokeLinejoin="round"
+										strokeWidth={2}
+										d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+									/>
+								</svg>
+							</button>
+						)}
+					</div>
 				</div>
 			</div>
 
@@ -498,29 +613,51 @@ export default function EventDetails() {
 										subscribers.map((subscriber) => (
 											<div
 												key={subscriber.id}
-												className="flex items-center space-x-2"
+												className="flex items-center justify-between space-x-2 relative group"
 											>
-												<span className="text-slate-600 dark:text-gray-400">
-													{subscriber.name}
-													{subscriber.role &&
-														subscriber.role !==
-															"attendee" && (
-															<>
-																{" "}
-																(
-																{subscriber.role
-																	.charAt(0)
-																	.toUpperCase() +
-																	subscriber.role.slice(
-																		1
-																	)}
-																)
-															</>
-														)}
-												</span>
-												<span className="text-slate-500 dark:text-gray-500 text-sm">
-													({subscriber.email})
-												</span>
+												<div className="flex items-center space-x-2">
+													<span className="text-slate-600 dark:text-gray-400">
+														{subscriber.name}
+														{subscriber.role &&
+															subscriber.role !== "attendee" && (
+																<>
+																	{" "}
+																	({subscriber.role.charAt(0).toUpperCase() +
+																		subscriber.role.slice(1)})
+																</>
+															)}
+													</span>
+													<span className="text-slate-500 dark:text-gray-500 text-sm">
+														({subscriber.email})
+													</span>
+												</div>
+												{(isAdmin || event.creator_email === session?.user?.email) && (
+													<button
+														onClick={() => {
+															if (window.confirm('Are you sure you want to unsubscribe this user?')) {
+																handleUnsubscribe(subscriber.user_id);
+															}
+														}}
+														className="absolute top-1.5 right-1.5 opacity-0 group-hover:opacity-100 transition-all bg-red-600 hover:bg-red-700 text-white rounded-full p-1.5 z-10 shadow active:scale-90 hover:scale-110 transform"
+														title="Unsubscribe user"
+														aria-label="Unsubscribe user"
+													>
+														<svg
+															xmlns="http://www.w3.org/2000/svg"
+															className="h-4 w-4"
+															fill="none"
+															viewBox="0 0 24 24"
+															stroke="currentColor"
+															strokeWidth={2}
+														>
+															<path
+																strokeLinecap="round"
+																strokeLinejoin="round"
+																d="M6 18L18 6M6 6l12 12"
+															/>
+														</svg>
+													</button>
+												)}
 											</div>
 										))
 									)}
@@ -586,6 +723,15 @@ export default function EventDetails() {
 					</div>
 				</div>
 			</div>
+
+			<ConfirmationDialog
+				isOpen={showDeleteDialog}
+				onClose={() => setShowDeleteDialog(false)}
+				onConfirm={handleDeleteEvent}
+				title="Delete Event"
+				message="Are you sure you want to delete this event? This action cannot be undone."
+				confirmText="Delete"
+			/>
 		</div>
 	);
 }
