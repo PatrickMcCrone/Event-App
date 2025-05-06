@@ -435,7 +435,9 @@ export default function Events() {
 									key={event.id}
 									className="relative bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-200 cursor-pointer border border-slate-100 dark:border-gray-700 min-h-[200px]"
 									onClick={() => handleEventClick(event.id)}
-									onMouseEnter={() => setHoveredEventId(event.id)}
+									onMouseEnter={() =>
+										setHoveredEventId(event.id)
+									}
 									onMouseLeave={() => setHoveredEventId(null)}
 								>
 									<div className="p-6 flex flex-col h-full">
@@ -447,16 +449,17 @@ export default function Events() {
 												className={`px-3 py-1 rounded-full text-sm font-medium ${
 													event.status === "upcoming"
 														? "bg-emerald-50 text-emerald-700 dark:bg-green-900 dark:text-green-100"
-														: event.status === "ongoing"
-														? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
-														: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
+														: event.status ===
+															  "ongoing"
+															? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-100"
+															: "bg-slate-100 text-slate-700 dark:bg-gray-700 dark:text-gray-100"
 												}`}
 											>
 												{event.status
 													? event.status
 															.charAt(0)
 															.toUpperCase() +
-													  event.status.slice(1)
+														event.status.slice(1)
 													: "Unknown"}
 											</span>
 										</div>
@@ -478,7 +481,9 @@ export default function Events() {
 											onClick={(e) => {
 												e.stopPropagation();
 												event.isSubscribed
-													? handleUnsubscribe(event.id)
+													? handleUnsubscribe(
+															event.id
+														)
 													: handleSubscribe(event.id);
 											}}
 											className={`absolute bottom-4 right-4 p-2 rounded-md transition-colors duration-200 ${

@@ -163,7 +163,7 @@ export default function NotificationsPanel() {
 						<CardContent>
 							<div className="space-y-4">
 								{notifications.length === 0 ? (
-									<p className="text-sm text-slate-500 dark:text-gray-400">
+									<p className="text-sm text-slate-500 dark:text-white">
 										No notifications
 									</p>
 								) : (

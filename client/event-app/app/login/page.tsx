@@ -6,26 +6,24 @@ import { useSearchParams } from "next/navigation";
 
 export default function LoginPage() {
 	const [isLoading, setIsLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
 	const searchParams = useSearchParams();
-	const error = searchParams.get("error");
+	const urlError = searchParams.get("error");
 
 	const handleGoogleSignIn = async () => {
 		try {
 			setIsLoading(true);
-			const result = await signIn("google", {
+			setError(null);
+			await signIn("google", {
 				callbackUrl: "/",
 				redirect: true,
 				prompt: "select_account",
 				access_type: "offline",
 				response_type: "code",
 			});
-
-			// If sign in was successful, force a reload of the page
-			if (result?.ok) {
-				window.location.href = "/";
-			}
 		} catch (error) {
 			console.error("Sign in error:", error);
+			setError("An unexpected error occurred. Please try again.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -43,20 +41,21 @@ export default function LoginPage() {
 					</p>
 				</div>
 
-				{error && (
+				{(error || urlError) && (
 					<div
 						className="bg-red-50 dark:bg-red-900 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-100 px-4 py-3 rounded relative"
 						role="alert"
 					>
 						<strong className="font-bold">Error: </strong>
 						<span className="block sm:inline">
-							{error === "AccessDenied"
-								? "Access denied. Please try again."
-								: error === "Configuration"
-								? "There is a problem with the server configuration."
-								: error === "Verification"
-								? "The verification token has expired or has already been used."
-								: "An error occurred during sign in. Please try again."}
+							{error ||
+								(urlError === "AccessDenied"
+									? "Access denied. Please try again."
+									: urlError === "Configuration"
+										? "There is a problem with the server configuration."
+										: urlError === "Verification"
+											? "The verification token has expired or has already been used."
+											: "An error occurred during sign in. Please try again.")}
 						</span>
 					</div>
 				)}
