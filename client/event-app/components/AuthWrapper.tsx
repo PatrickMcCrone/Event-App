@@ -1,7 +1,7 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect } from "react";
 
 export default function AuthWrapper({
@@ -11,12 +11,13 @@ export default function AuthWrapper({
 }) {
 	const { data: session, status } = useSession();
 	const router = useRouter();
+	const pathname = usePathname();
 
 	useEffect(() => {
-		if (status === "unauthenticated") {
+		if (status === "unauthenticated" && pathname !== "/login") {
 			router.push("/login");
 		}
-	}, [status, router]);
+	}, [status, router, pathname]);
 
 	if (status === "loading") {
 		return (
@@ -26,6 +27,12 @@ export default function AuthWrapper({
 		);
 	}
 
+	// Allow access to login page without session
+	if (pathname === "/login") {
+		return <>{children}</>;
+	}
+
+	// For all other pages, require authentication
 	if (!session?.user) {
 		return null;
 	}

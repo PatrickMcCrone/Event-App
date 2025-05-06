@@ -91,7 +91,7 @@ export default function EventDetails() {
 	const [isAdmin, setIsAdmin] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
-	const [settings, setSettings] = useState({ timezone: "" });
+	const [settings, setSettings] = useState({ timezone: "America/New_York" });
 	const [showAnnouncementForm, setShowAnnouncementForm] = useState(false);
 	const [authToken, setAuthToken] = useState<string | null>(null);
 	const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -105,127 +105,199 @@ export default function EventDetails() {
 		end_time: "",
 		location: "",
 	});
+	const [isFetching, setIsFetching] = useState(false);
 
 	// Fetch user settings first
 	useEffect(() => {
 		const fetchSettings = async () => {
 			if (session?.user?.id) {
 				try {
-					console.log("Fetching user settings...");
+					console.log("\n[DEBUG] Fetching user settings:");
+					console.log("- User ID:", session.user.id);
 					const response = await fetch(
 						`http://localhost:3001/settings/reminders/${session.user.id}`
 					);
 					if (response.ok) {
 						const data = await response.json();
-						console.log("Received settings:", data);
-						setSettings((prev) => ({
-							...prev,
-							timezone: data.timezone || "America/New_York",
-						}));
+						console.log("[DEBUG] Received settings:", data);
+						const timezone = data.timezone || "America/New_York";
+						console.log("[DEBUG] Setting timezone to:", timezone);
+						setSettings({ timezone });
+					} else {
+						console.log(
+							"[DEBUG] Settings fetch failed, using default timezone (EST)"
+						);
+						setSettings({ timezone: "America/New_York" });
 					}
 				} catch (error) {
-					console.error("Error fetching settings:", error);
+					console.error("[ERROR] Error fetching settings:", error);
+					setSettings({ timezone: "America/New_York" });
 				}
 			}
 		};
 		fetchSettings();
 	}, [session?.user?.id]);
 
-	useEffect(() => {
-		const fetchEventDetails = async () => {
-			if (!session?.user?.id) return;
+	const fetchEventDetails = async () => {
+		if (!session?.user?.id || isFetching) {
+			console.log(
+				"[DEBUG] Skipping fetch - Missing session or already fetching"
+			);
+			return;
+		}
 
-			try {
-				// Fetch event details
-				const eventResponse = await fetch(
-					`http://localhost:3001/events/${params.id}`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.user.accessToken}`,
-						},
-					}
-				);
+		try {
+			setIsFetching(true);
+			console.log("\n[DEBUG] Fetching event details:");
+			console.log("- Event ID:", params.id);
+			console.log("- Timezone:", settings.timezone);
+			console.log("- User ID:", session.user.id);
 
-				if (!eventResponse.ok) {
-					throw new Error("Failed to fetch event details");
+			const response = await fetch(
+				`http://localhost:3001/events/${params.id}?timezone=${encodeURIComponent(settings.timezone)}`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
 				}
+			);
 
-				const eventData = await eventResponse.json();
-				setEvent(eventData);
-
-				// Fetch admins
-				const adminsResponse = await fetch(
-					`http://localhost:3001/events/${params.id}/admins`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.user.accessToken}`,
-						},
-					}
+			if (!response.ok) {
+				const errorData = await response.json();
+				console.error(
+					"[ERROR] Error fetching event details:",
+					errorData
 				);
-
-				if (!adminsResponse.ok) {
-					throw new Error("Failed to fetch admins");
-				}
-
-				const adminsData = await adminsResponse.json();
-				setAdmins(adminsData);
-
-				// Fetch subscribers
-				const subscribersResponse = await fetch(
-					`http://localhost:3001/events/${params.id}/subscribers`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.user.accessToken}`,
-						},
-					}
+				throw new Error(
+					errorData.error || "Failed to fetch event details"
 				);
-
-				if (!subscribersResponse.ok) {
-					throw new Error("Failed to fetch subscribers");
-				}
-
-				const subscribersData = await subscribersResponse.json();
-				setSubscribers(subscribersData);
-
-				// Fetch announcements
-				const announcementsResponse = await fetch(
-					`http://localhost:3001/events/${params.id}/announcements`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.user.accessToken}`,
-						},
-					}
-				);
-
-				if (!announcementsResponse.ok) {
-					throw new Error("Failed to fetch announcements");
-				}
-
-				const announcementsData = await announcementsResponse.json();
-				setAnnouncements(announcementsData);
-
-				// Check if user is admin
-				const adminResponse = await fetch(
-					`http://localhost:3001/events/${params.id}/admin`,
-					{
-						headers: {
-							Authorization: `Bearer ${session.user.accessToken}`,
-						},
-					}
-				);
-
-				if (adminResponse.ok) {
-					setIsAdmin(true);
-				}
-			} catch (error) {
-				console.error("Error fetching event details:", error);
-			} finally {
-				setLoading(false);
 			}
-		};
 
-		fetchEventDetails();
-	}, [params.id, session]);
+			const eventData = await response.json();
+			console.log("[DEBUG] Received event data:");
+			console.log("- Title:", eventData.title);
+			console.log("- Start Time:", eventData.start_time);
+			console.log("- End Time:", eventData.end_time);
+			console.log("- Display Timezone:", eventData.display_timezone);
+			setEvent(eventData);
+
+			// Fetch admins
+			console.log("[DEBUG] Fetching admins...");
+			const adminsResponse = await fetch(
+				`http://localhost:3001/events/${params.id}/admins`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
+				}
+			);
+
+			if (!adminsResponse.ok) {
+				throw new Error("Failed to fetch admins");
+			}
+
+			const adminsData = await adminsResponse.json();
+			console.log(
+				"[DEBUG] Received admins data:",
+				adminsData.length,
+				"admins"
+			);
+			setAdmins(adminsData);
+
+			// Fetch subscribers
+			console.log("[DEBUG] Fetching subscribers...");
+			const subscribersResponse = await fetch(
+				`http://localhost:3001/events/${params.id}/subscribers`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
+				}
+			);
+
+			if (!subscribersResponse.ok) {
+				throw new Error("Failed to fetch subscribers");
+			}
+
+			const subscribersData = await subscribersResponse.json();
+			console.log(
+				"[DEBUG] Received subscribers data:",
+				subscribersData.length,
+				"subscribers"
+			);
+			setSubscribers(subscribersData);
+
+			// Fetch announcements
+			console.log("[DEBUG] Fetching announcements...");
+			const announcementsResponse = await fetch(
+				`http://localhost:3001/events/${params.id}/announcements`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
+				}
+			);
+
+			if (!announcementsResponse.ok) {
+				throw new Error("Failed to fetch announcements");
+			}
+
+			const announcementsData = await announcementsResponse.json();
+			console.log(
+				"[DEBUG] Received announcements data:",
+				announcementsData.length,
+				"announcements"
+			);
+			setAnnouncements(announcementsData);
+
+			// Check if user is admin
+			console.log("[DEBUG] Checking admin status...");
+			const adminResponse = await fetch(
+				`http://localhost:3001/events/${params.id}/admin`,
+				{
+					headers: {
+						Authorization: `Bearer ${session.user.accessToken}`,
+					},
+				}
+			);
+
+			if (adminResponse.ok) {
+				console.log("[DEBUG] User is admin");
+				setIsAdmin(true);
+			} else {
+				console.log("[DEBUG] User is not admin");
+			}
+		} catch (error) {
+			console.error("[ERROR] Error fetching event details:", error);
+			setError("Failed to load event details");
+		} finally {
+			setLoading(false);
+			setIsFetching(false);
+			console.log("[DEBUG] Fetch completed");
+		}
+	};
+
+	// Add effect to refresh event details when timezone changes
+	useEffect(() => {
+		if (settings.timezone && session?.user?.id && !isFetching) {
+			console.log("\n[DEBUG] Timezone changed:");
+			console.log("- New Timezone:", settings.timezone);
+			console.log("- User ID:", session.user.id);
+			console.log("- Is Fetching:", isFetching);
+			fetchEventDetails();
+		}
+	}, [settings.timezone, session?.user?.id]);
+
+	// Initial fetch
+	useEffect(() => {
+		if (session?.user?.id && settings.timezone && !isFetching) {
+			console.log("\n[DEBUG] Initial fetch:");
+			console.log("- User ID:", session.user.id);
+			console.log("- Timezone:", settings.timezone);
+			console.log("- Is Fetching:", isFetching);
+			fetchEventDetails();
+		}
+	}, [params.id, session?.user?.id, settings.timezone]);
 
 	useEffect(() => {
 		if (event) {

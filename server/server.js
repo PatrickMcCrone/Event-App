@@ -94,15 +94,50 @@ app.get("/", (req, res) => {
 	res.json({ message: "Event App" });
 });
 
+// Helper function for timezone conversion
+const convertTimeToTimezone = (time, fromTimezone, toTimezone) => {
+	// Create a date object for today with the time in the source timezone
+	const date = new Date();
+	date.setHours(time.hours, time.minutes, 0, 0);
+
+	// Format the time in the target timezone
+	const formatter = new Intl.DateTimeFormat("en-US", {
+		timeZone: toTimezone,
+		hour: "numeric",
+		minute: "2-digit",
+		hour12: true,
+		timeZoneName: "short",
+	});
+
+	const formatted = formatter.format(date);
+	const timezoneMatch = formatted.match(/\s([A-Z]{3,4})$/);
+	const timezoneAbbr = timezoneMatch ? timezoneMatch[1] : "";
+
+	return {
+		formatted: formatted.replace(/\s[A-Z]{3,4}$/, ""),
+		timezoneAbbr,
+	};
+};
+
+// Helper function to parse time strings
+const parseTime = (timeStr) => {
+	if (!timeStr) return { hours: 0, minutes: 0 };
+	const [hours, minutes] = timeStr.split(":").map(Number);
+	return { hours, minutes };
+};
+
+// Helper function to create event dates
+const createEventDate = (dateStr, timeStr) => {
+	const date = new Date(dateStr);
+	const { hours, minutes } = parseTime(timeStr);
+	date.setHours(hours, minutes, 0, 0);
+	return date;
+};
+
 // Get all events
 app.get("/events", async (req, res) => {
 	const client = await pool.connect();
-	const userTimezone =
-		req.query.timezone === "EST"
-			? "America/New_York"
-			: req.query.timezone === "CST"
-				? "America/Chicago"
-				: req.query.timezone || "America/New_York";
+	const targetTimezone = req.query.timezone || "America/New_York";
 
 	try {
 		const result = await client.query(`
@@ -123,60 +158,18 @@ app.get("/events", async (req, res) => {
 					const eventTimezone = event.timezone || "America/New_York";
 
 					// Parse the time string
-					const parseTime = (timeStr) => {
-						if (!timeStr) return { hours: 0, minutes: 0 };
-						const [hours, minutes] = timeStr.split(":");
-						return {
-							hours: parseInt(hours, 10),
-							minutes: parseInt(minutes, 10),
-						};
-					};
-
 					const startTime = parseTime(event.start_time);
 					const endTime = parseTime(event.end_time);
 
-					// Create date objects in the event's timezone
-					const createDateInTimezone = (
-						date,
-						time,
-						fromTimezone,
-						toTimezone
-					) => {
-						const { hours, minutes } = time;
-
-						// Create a date object in the event's original timezone
-						const eventDate = new Date(date);
-						eventDate.setHours(hours, minutes, 0, 0);
-
-						// Format the time in the target timezone
-						const formatter = new Intl.DateTimeFormat("en-US", {
-							timeZone: toTimezone,
-							hour: "numeric",
-							minute: "2-digit",
-							hour12: true,
-						});
-
-						// Get the formatted time in the target timezone
-						const formattedTime = formatter.format(eventDate);
-
-						return {
-							date: eventDate,
-							formatted: formattedTime,
-						};
-					};
-
-					const startResult = createDateInTimezone(
-						new Date(event.start_date),
+					const startResult = convertTimeToTimezone(
 						startTime,
 						eventTimezone,
-						userTimezone
+						targetTimezone
 					);
-
-					const endResult = createDateInTimezone(
-						new Date(event.end_date),
+					const endResult = convertTimeToTimezone(
 						endTime,
 						eventTimezone,
-						userTimezone
+						targetTimezone
 					);
 
 					// Map IANA timezone names to abbreviations
@@ -191,20 +184,16 @@ app.get("/events", async (req, res) => {
 						formatted: startResult.formatted,
 						hours: startTime.hours,
 						minutes: startTime.minutes,
-						timezone:
-							timezoneAbbreviations[userTimezone] ||
-							userTimezone.split("/")[1],
-						rawTimezone: userTimezone,
+						timezone: startResult.timezoneAbbr,
+						rawTimezone: targetTimezone,
 					};
 
 					const userEndTime = {
 						formatted: endResult.formatted,
 						hours: endTime.hours,
 						minutes: endTime.minutes,
-						timezone:
-							timezoneAbbreviations[userTimezone] ||
-							userTimezone.split("/")[1],
-						rawTimezone: userTimezone,
+						timezone: endResult.timezoneAbbr,
+						rawTimezone: targetTimezone,
 					};
 
 					let status = "upcoming";
@@ -234,8 +223,8 @@ app.get("/events", async (req, res) => {
 						end_time: userEndTime,
 						original_timezone: eventTimezone,
 						display_timezone:
-							timezoneAbbreviations[userTimezone] ||
-							userTimezone.split("/")[1],
+							timezoneAbbreviations[targetTimezone] ||
+							targetTimezone.split("/")[1],
 					};
 				} catch (error) {
 					console.error(
@@ -258,182 +247,82 @@ app.get("/events", async (req, res) => {
 });
 
 // Get a single event
-app.get("/events/:id", async (req, res) => {
-	const { id } = req.params;
-	const client = await pool.connect();
-
-	// Map timezone abbreviations to IANA timezone names
-	const timezoneMap = {
-		EST: "America/New_York",
-		CST: "America/Chicago",
-		MST: "America/Denver",
-		PST: "America/Los_Angeles",
-	};
-
-	const userTimezone =
-		timezoneMap[req.query.timezone] ||
-		req.query.timezone ||
-		"America/New_York";
+app.get("/events/:id", verifyJWT, async (req, res) => {
+	const eventId = req.params.id;
+	const targetTimezone = req.query.timezone || "America/New_York";
 
 	try {
-		const result = await client.query(
-			`
-			SELECT 
-				e.*,
-				u.name as creator_name,
-				u.email as creator_email
-			FROM events e
-			LEFT JOIN users u ON e.created_by = u.id
-			WHERE e.id = $1
-		`,
-			[id]
+		// Get event details
+		const eventResult = await pool.query(
+			"SELECT * FROM events WHERE id = $1",
+			[eventId]
 		);
 
-		if (result.rows.length === 0) {
+		if (eventResult.rows.length === 0) {
 			return res.status(404).json({ error: "Event not found" });
 		}
 
-		const event = result.rows[0];
+		const event = eventResult.rows[0];
 
+		// Calculate event status
 		const now = new Date();
+		const eventStart = createEventDate(event.start_date, event.start_time);
+		const eventEnd = createEventDate(event.end_date, event.end_time);
 
-		try {
-			// Ensure timezone is set
-			const eventTimezone = event.timezone || "America/New_York";
+		const nowMs = now.getTime();
+		const startMs = eventStart.getTime();
+		const endMs = eventEnd.getTime();
 
-			// Parse the time string
-			const parseTime = (timeStr) => {
-				if (!timeStr) return { hours: 0, minutes: 0 };
-				const [hours, minutes] = timeStr.split(":");
-				return {
-					hours: parseInt(hours, 10),
-					minutes: parseInt(minutes, 10),
-				};
-			};
-
-			const startTime = parseTime(event.start_time);
-			const endTime = parseTime(event.end_time);
-
-			// Create date objects in the event's timezone
-			const createDateInTimezone = (
-				date,
-				time,
-				fromTimezone,
-				toTimezone
-			) => {
-				const { hours, minutes } = time;
-
-				// Create a date object in the event's original timezone
-				const eventDate = new Date(date);
-				eventDate.setHours(hours, minutes, 0, 0);
-
-				// Format the time in the target timezone
-				const formatter = new Intl.DateTimeFormat("en-US", {
-					timeZone: toTimezone,
-					hour: "numeric",
-					minute: "2-digit",
-					hour12: true,
-				});
-
-				// Get the formatted time in the target timezone
-				const formattedTime = formatter.format(eventDate);
-
-				return {
-					date: eventDate,
-					formatted: formattedTime,
-				};
-			};
-
-			const startResult = createDateInTimezone(
-				new Date(event.start_date),
-				startTime,
-				eventTimezone,
-				userTimezone
-			);
-
-			const endResult = createDateInTimezone(
-				new Date(event.end_date),
-				endTime,
-				eventTimezone,
-				userTimezone
-			);
-
-			// Map IANA timezone names to abbreviations
-			const timezoneAbbreviations = {
-				"America/New_York": "EST",
-				"America/Chicago": "CST",
-				"America/Denver": "MST",
-				"America/Los_Angeles": "PST",
-			};
-
-			const userStartTime = {
-				formatted: startResult.formatted,
-				hours: startTime.hours,
-				minutes: startTime.minutes,
-				timezone:
-					timezoneAbbreviations[userTimezone] ||
-					userTimezone.split("/")[1],
-				rawTimezone: userTimezone,
-			};
-
-			const userEndTime = {
-				formatted: endResult.formatted,
-				hours: endTime.hours,
-				minutes: endTime.minutes,
-				timezone:
-					timezoneAbbreviations[userTimezone] ||
-					userTimezone.split("/")[1],
-				rawTimezone: userTimezone,
-			};
-
-			let status = "upcoming";
-			const now = new Date();
-
-			// Use the timezone-aware date objects we created
-			if (now > endResult.date) {
-				status = "completed";
-			} else if (now >= startResult.date && now <= endResult.date) {
-				status = "ongoing";
-			}
-
-			// Get participants count and list
-			const participantsResult = await client.query(
-				`
-				SELECT 
-					ep.*,
-					u.name,
-					u.email
-				FROM event_participants ep
-				JOIN users u ON ep.user_id = u.id
-				WHERE ep.event_id = $1
-				ORDER BY u.name
-			`,
-				[id]
-			);
-
-			const eventWithStatus = {
-				...event,
-				status,
-				attendees: participantsResult.rows.length,
-				participants: participantsResult.rows,
-				start_time: userStartTime,
-				end_time: userEndTime,
-				original_timezone: eventTimezone,
-				display_timezone:
-					timezoneAbbreviations[userTimezone] ||
-					userTimezone.split("/")[1],
-			};
-
-			res.json(eventWithStatus);
-		} catch (error) {
-			console.error("Error converting timezone for event:", id, error);
-			res.status(500).json({ error: "Error processing event timezone" });
+		let status = "upcoming";
+		if (nowMs > endMs) {
+			status = "completed";
+		} else if (nowMs >= startMs && nowMs <= endMs) {
+			status = "ongoing";
 		}
+
+		// Get user's timezone from settings
+		const settingsResult = await pool.query(
+			"SELECT timezone FROM user_settings WHERE user_id = $1",
+			[req.user.id]
+		);
+
+		const finalTimezone =
+			settingsResult.rows[0]?.timezone || targetTimezone;
+
+		const startTime = parseTime(event.start_time);
+		const endTime = parseTime(event.end_time);
+
+		const startResult = convertTimeToTimezone(
+			startTime,
+			event.timezone,
+			finalTimezone
+		);
+		const endResult = convertTimeToTimezone(
+			endTime,
+			event.timezone,
+			finalTimezone
+		);
+
+		// Get participant details
+		const participantsResult = await pool.query(
+			"SELECT u.name, u.email FROM event_participants ep JOIN users u ON ep.user_id = u.id WHERE ep.event_id = $1",
+			[eventId]
+		);
+
+		// Prepare response
+		const response = {
+			...event,
+			start_time: startResult.formatted,
+			end_time: endResult.formatted,
+			display_timezone: startResult.timezoneAbbr,
+			participants: participantsResult.rows,
+			status,
+		};
+
+		res.json(response);
 	} catch (error) {
-		console.error("Error fetching event:", error);
-		res.status(500).json({ error: "Internal Server Error" });
-	} finally {
-		client.release();
+		console.error("Error fetching event details:", error);
+		res.status(500).json({ error: "Failed to fetch event details" });
 	}
 });
 
@@ -742,6 +631,14 @@ app.get("/notifications", verifyJWT, async (req, res) => {
 			await initializeDatabase();
 		}
 
+		// Get user's timezone from settings
+		const settingsResult = await client.query(
+			"SELECT timezone FROM user_settings WHERE user_id = $1",
+			[req.user.id]
+		);
+		const userTimezone =
+			settingsResult.rows[0]?.timezone || "America/New_York";
+
 		const result = await client.query(
 			`
 			SELECT 
@@ -754,6 +651,7 @@ app.get("/notifications", verifyJWT, async (req, res) => {
 				e.title as event_title,
 				e.start_date as event_date,
 				e.start_time as event_time,
+				e.timezone as event_timezone,
 				a.title as announcement_title,
 				a.message as announcement_message,
 				u.name as announcement_author_name,
@@ -768,22 +666,51 @@ app.get("/notifications", verifyJWT, async (req, res) => {
 			[req.user.id]
 		);
 
-		console.log("Raw notification rows:", result.rows);
+		// Convert times to user's timezone
+		const notifications = result.rows.map((n) => {
+			// Convert created_at to user's timezone
+			const createdDate = new Date(n.created_at);
+			const formatter = new Intl.DateTimeFormat("en-US", {
+				timeZone: userTimezone,
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+				hour: "2-digit",
+				minute: "2-digit",
+				hour12: true,
+			});
+			const formattedCreatedAt = formatter.format(createdDate);
 
-		// Ensure created_at is always an ISO string
-		const notifications = result.rows.map((n) => ({
-			...n,
-			created_at:
-				n.created_at instanceof Date
-					? n.created_at.toISOString()
-					: n.created_at,
-			event_date:
-				n.event_date instanceof Date
-					? n.event_date.toISOString()
-					: n.event_date,
-		}));
+			// Convert event time if it exists
+			let formattedEventTime = null;
+			if (n.event_time) {
+				const { hours, minutes } = parseTime(n.event_time);
+				const timeResult = convertTimeToTimezone(
+					{ hours, minutes },
+					n.event_timezone || "America/New_York",
+					userTimezone
+				);
+				formattedEventTime = timeResult.formatted;
+			}
 
-		console.log("Sending notifications:", notifications);
+			// Get timezone abbreviation
+			const timezoneFormatter = new Intl.DateTimeFormat("en-US", {
+				timeZone: userTimezone,
+				timeZoneName: "short",
+			});
+			const timezoneAbbr = timezoneFormatter
+				.format(createdDate)
+				.split(" ")
+				.pop();
+
+			return {
+				...n,
+				created_at: formattedCreatedAt,
+				event_time: formattedEventTime,
+				display_timezone: timezoneAbbr,
+			};
+		});
+
 		res.json(notifications);
 	} catch (error) {
 		console.error("Error fetching notifications:", error);
@@ -1053,16 +980,41 @@ app.put("/events/:id", verifyJWT, async (req, res) => {
 
 	const client = await pool.connect();
 	try {
-		// Check if user owns the event
+		// Check if user owns the event or is an admin
 		const eventResult = await client.query(
-			"SELECT * FROM events WHERE id = $1 AND created_by = $2",
+			`SELECT * FROM events WHERE id = $1 AND created_by = $2`,
 			[id, req.user.id]
 		);
-		if (eventResult.rows.length === 0) {
+		const adminResult = await client.query(
+			`SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2`,
+			[id, req.user.id]
+		);
+		if (eventResult.rows.length === 0 && adminResult.rows.length === 0) {
 			return res
 				.status(403)
 				.json({ error: "Not authorized to update this event" });
 		}
+
+		// Store times as provided (no conversion)
+		const formatTimeForStorage = (timeStr) => {
+			if (!timeStr) return null;
+			const parts = timeStr.split(":");
+			if (parts.length < 2) return null;
+			const hours = parseInt(parts[0], 10);
+			const minutes = parseInt(parts[1], 10);
+			if (isNaN(hours) || isNaN(minutes)) return null;
+			return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:00`;
+		};
+
+		const formattedStartTime = start_time
+			? formatTimeForStorage(start_time)
+			: undefined;
+		const formattedEndTime = end_time
+			? formatTimeForStorage(end_time)
+			: undefined;
+		const finalStartTime =
+			formattedStartTime || eventResult.rows[0]?.start_time;
+		const finalEndTime = formattedEndTime || eventResult.rows[0]?.end_time;
 
 		const result = await client.query(
 			`
@@ -1085,8 +1037,8 @@ app.put("/events/:id", verifyJWT, async (req, res) => {
 				description,
 				start_date,
 				end_date,
-				start_time,
-				end_time,
+				finalStartTime,
+				finalEndTime,
 				location,
 				type,
 				id,
@@ -1097,10 +1049,51 @@ app.put("/events/:id", verifyJWT, async (req, res) => {
 			return res.status(404).json({ error: "Event not found" });
 		}
 
-		// Notify subscribers about the update
-		await notifySubscribers(id, `Event "${title}" has been updated`);
+		const event = result.rows[0];
 
-		res.json(result.rows[0]);
+		// Calculate event status
+		const now = new Date();
+		const eventStart = createEventDate(event.start_date, event.start_time);
+		const eventEnd = createEventDate(event.end_date, event.end_time);
+		const nowMs = now.getTime();
+		const startMs = eventStart.getTime();
+		const endMs = eventEnd.getTime();
+		let status = "upcoming";
+		if (nowMs > endMs) {
+			status = "completed";
+		} else if (nowMs >= startMs && nowMs <= endMs) {
+			status = "ongoing";
+		}
+
+		// Get user's timezone from settings
+		const settingsResult = await client.query(
+			"SELECT timezone FROM user_settings WHERE user_id = $1",
+			[req.user.id]
+		);
+		const finalTimezone =
+			settingsResult.rows[0]?.timezone || "America/New_York";
+
+		const startTime = parseTime(event.start_time);
+		const endTime = parseTime(event.end_time);
+		const startResult = convertTimeToTimezone(
+			startTime,
+			event.timezone,
+			finalTimezone
+		);
+		const endResult = convertTimeToTimezone(
+			endTime,
+			event.timezone,
+			finalTimezone
+		);
+
+		// Prepare response (formatted, like GET /events/:id)
+		res.json({
+			...event,
+			start_time: startResult.formatted, // e.g., 08:00 AM
+			end_time: endResult.formatted, // e.g., 08:01 AM
+			display_timezone: startResult.timezoneAbbr,
+			status,
+		});
 	} catch (error) {
 		console.error("Error updating event:", error);
 		res.status(500).json({ error: "Internal Server Error" });
@@ -1114,12 +1107,16 @@ app.delete("/events/:id", verifyJWT, async (req, res) => {
 	const { id } = req.params;
 	const client = await pool.connect();
 	try {
-		// Check if user owns the event
+		// Check if user owns the event or is an admin
 		const eventResult = await client.query(
 			"SELECT * FROM events WHERE id = $1 AND created_by = $2",
 			[id, req.user.id]
 		);
-		if (eventResult.rows.length === 0) {
+		const adminResult = await client.query(
+			"SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2",
+			[id, req.user.id]
+		);
+		if (eventResult.rows.length === 0 && adminResult.rows.length === 0) {
 			return res
 				.status(403)
 				.json({ error: "Not authorized to delete this event" });
@@ -1287,17 +1284,15 @@ app.post("/events/:id/announcements", verifyJWT, async (req, res) => {
 		const { title, message, recipientType } = req.body;
 		const userId = req.user.id;
 
-		// Verify user is event admin
+		// Verify user is event admin or creator
 		const adminCheck = await client.query(
-			`SELECT role FROM event_participants 
-			WHERE event_id = $1 AND user_id = $2`,
+			`SELECT 1 FROM event_admins WHERE event_id = $1 AND user_id = $2
+			UNION
+			SELECT 1 FROM events WHERE id = $1 AND created_by = $2`,
 			[eventId, userId]
 		);
 
-		if (
-			adminCheck.rows.length === 0 ||
-			adminCheck.rows[0].role !== "admin"
-		) {
+		if (adminCheck.rows.length === 0) {
 			return res
 				.status(403)
 				.json({ error: "Only event admins can create announcements" });
@@ -1305,10 +1300,10 @@ app.post("/events/:id/announcements", verifyJWT, async (req, res) => {
 
 		// Create announcement
 		const announcementResult = await client.query(
-			`INSERT INTO announcements (event_id, title, message, created_by, created_at)
+			`INSERT INTO announcements (event_id, user_id, title, message, created_at)
 			VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
 			RETURNING *`,
-			[eventId, title, message, userId]
+			[eventId, userId, title, message]
 		);
 		const announcement = announcementResult.rows[0];
 
